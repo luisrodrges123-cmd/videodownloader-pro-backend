@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080d18">
+<title>VideoDownloader Pro — Admin</title>
+<style>
+:root{color-scheme:dark;--bg:#080d18;--side:#0d1524;--panel:#111d30;--panel2:#15243a;--line:#263b58;--text:#f1f6ff;--muted:#8fa3bf;--cyan:#54d7e8;--blue:#658bff;--green:#4de0a5;--red:#ff6b7d;--shadow:0 18px 50px #0005}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;min-height:100vh}
+button,input,select{font:inherit}.app{min-height:100vh;display:grid;grid-template-columns:250px 1fr}
+.sidebar{background:linear-gradient(180deg,#0e192a,#0a111e);border-right:1px solid var(--line);padding:22px 15px;display:flex;flex-direction:column;gap:25px}
+.brand{display:flex;align-items:center;gap:12px;padding:4px 8px 20px;border-bottom:1px solid var(--line)}
+.brand img{width:54px;height:54px;object-fit:contain;border-radius:14px;background:#fff;padding:3px;box-shadow:0 0 25px #54d7e833}
+.brand b{font-size:14px;letter-spacing:.2px}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+.nav-label{color:#627894;font-size:10px;font-weight:800;letter-spacing:1.5px;padding:0 12px;margin-bottom:8px}
+nav{display:grid;gap:6px}.nav-item{display:flex;align-items:center;gap:12px;padding:12px;border-radius:11px;color:#9db0c9;text-decoration:none;cursor:pointer;border:1px solid transparent;transition:.2s}
+.nav-item:hover,.nav-item.active{background:linear-gradient(100deg,#18334a,#152b42);color:#eafaff;border-color:#2a5268}.nav-item.active{box-shadow:inset 3px 0 var(--cyan)}
+.ico{width:20px;text-align:center;font-size:17px}.side-bottom{margin-top:auto;background:#111f32;border:1px solid var(--line);padding:13px;border-radius:13px}
+.online{display:flex;align-items:center;gap:8px;color:#a8f5d2;font-size:12px}.dot{width:8px;height:8px;background:var(--green);border-radius:50%;box-shadow:0 0 12px var(--green)}
+.side-bottom p{color:var(--muted);font-size:11px;line-height:1.5;margin:9px 0 0}
+main{min-width:0;padding:27px clamp(16px,3vw,38px) 45px;max-width:1600px;width:100%;margin:auto}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:28px}
+.eyebrow{color:var(--cyan);font-size:10px;font-weight:800;letter-spacing:1.8px;text-transform:uppercase}
+h1{font-size:clamp(24px,3vw,32px);margin:6px 0 4px;letter-spacing:-.8px}.subtitle{color:var(--muted);margin:0}
+.top-actions{display:flex;align-items:center;gap:10px}.avatar{width:38px;height:38px;border-radius:12px;object-fit:contain;background:#fff;padding:2px;border:1px solid var(--line)}
+.btn{border:1px solid var(--line);border-radius:10px;padding:10px 13px;background:#14243a;color:#eaf4ff;cursor:pointer;font-weight:650;transition:.2s}.btn:hover{border-color:var(--cyan);transform:translateY(-1px)}.btn.primary{background:linear-gradient(110deg,#38bfcf,#4d8cff);color:#06111c;border:0}.btn.red{color:#ffb2bd;background:#301b2a;border-color:#5a3040}
+.login-wrap{max-width:440px;margin:9vh auto}.login{background:linear-gradient(145deg,#14243a,#0e1829);border:1px solid var(--line);border-radius:22px;padding:28px;box-shadow:var(--shadow)}
+.login-logo{display:block;width:92px;height:92px;object-fit:contain;background:#fff;padding:5px;border-radius:22px;margin:0 auto 18px}.login h2{text-align:center;margin:0 0 8px;font-size:23px}.login p{text-align:center;color:var(--muted);line-height:1.6;margin:0 0 22px}
+label{display:block;color:#bdcce0;font-size:12px;margin:15px 0 7px}input,select{width:100%;padding:13px 14px;border-radius:10px;border:1px solid #304763;background:#091321;color:white;outline:none}input:focus,select:focus{border-color:var(--cyan)}.login .btn{width:100%;margin-top:15px}.error{color:#ff9aa8;min-height:20px;margin-top:10px;font-size:12px}
+#dashboard{display:none}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}
+.card,.panel{background:linear-gradient(145deg,#142238,#101a2b);border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow)}
+.card{padding:18px;position:relative;overflow:hidden}.card:after{content:"";position:absolute;width:100px;height:100px;border-radius:50%;background:#4fd8e811;right:-35px;top:-40px}
+.card-head{display:flex;justify-content:space-between;align-items:center;color:var(--muted);font-size:12px}.card-icon{width:34px;height:34px;border-radius:10px;background:#1c3850;display:grid;place-items:center;font-size:16px;color:var(--cyan)}
+.metric{font-size:clamp(25px,3vw,34px);font-weight:800;letter-spacing:-1px;margin:14px 0 5px}.metric-note{font-size:11px;color:#8197b4}
+.content-grid{display:grid;grid-template-columns:1.25fr .75fr;gap:15px;margin-top:16px}.panel{padding:20px;min-width:0}.panel-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.panel-title h2{font-size:16px;margin:0}.panel-title span{font-size:11px;color:var(--muted)}
+.platform-list{display:grid;gap:17px}.platform-row{display:grid;grid-template-columns:95px 1fr 42px;align-items:center;gap:10px}.platform-name{font-size:12px;color:#c4d3e7}.track{height:9px;background:#091321;border-radius:20px;overflow:hidden;border:1px solid #1d3048}.bar{height:100%;border-radius:20px;background:linear-gradient(90deg,#37c6d4,#648cff);width:0;transition:width .5s}.platform-count{text-align:right;font-size:12px;font-weight:750}
+.chart-note{color:var(--muted);font-size:11px;margin-top:18px}
+.table-panel{margin-top:16px}.table-tools{display:flex;gap:9px;align-items:center}.table-tools input{max-width:230px;padding:9px 11px;font-size:12px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:560px}th,td{padding:13px 10px;text-align:left;border-bottom:1px solid #26364e;font-size:12px}th{color:#8298b5;font-weight:700;text-transform:uppercase;letter-spacing:.6px;font-size:10px}td{color:#d9e5f5}.pill{display:inline-block;padding:5px 9px;border-radius:30px;background:#1b3850;color:#8ee7f0;font-size:10px;font-weight:750}.empty{text-align:center;color:var(--muted);padding:22px}
+.toolbar-note{font-size:11px;color:var(--muted);margin-top:12px}.toast{position:fixed;right:20px;bottom:20px;background:#183d38;border:1px solid #2d806c;color:#b9ffe3;padding:12px 16px;border-radius:12px;display:none;box-shadow:var(--shadow);z-index:5}
+.section-page{display:none}.section-page.active{display:block}
+@media(max-width:1000px){.app{grid-template-columns:210px 1fr}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.content-grid{grid-template-columns:1fr}}
+@media(max-width:700px){.app{display:block}.sidebar{padding:12px;position:sticky;top:0;z-index:4;border-right:0;border-bottom:1px solid var(--line)}.brand{padding:0 4px 10px;border:0}.brand img{width:40px;height:40px}.sidebar .nav-label,.side-bottom{display:none}nav{display:flex;overflow:auto;gap:5px} .nav-item{white-space:nowrap;padding:9px 11px;font-size:11px}.ico{font-size:14px;width:auto}main{padding:22px 14px}.topbar{align-items:flex-start}.top-actions .btn{padding:9px;font-size:11px}.avatar{display:none}}
+@media(max-width:420px){.cards{grid-template-columns:1fr 1fr;gap:9px}.card{padding:13px}.metric{font-size:24px}.card-head{font-size:10px}.topbar{display:block}.top-actions{margin-top:14px;justify-content:space-between}.platform-row{grid-template-columns:75px 1fr 32px;gap:7px}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="brand"><img src="https://i.postimg.cc/JyW9Jt8R/logo-lobo.png" alt="Logo VideoDownloader Pro"><div><b>VideoDownloader Pro</b><small>ADMIN CONTROL CENTER</small></div></div>
+  <div><div class="nav-label">MENÚ PRINCIPAL</div>
+    <nav>
+      <a class="nav-item active" data-page="overview"><span class="ico">▦</span>Resumen</a>
+      <a class="nav-item" data-page="downloads"><span class="ico">⇩</span>Descargas</a>
+      <a class="nav-item" data-page="platforms"><span class="ico">◈</span>Plataformas</a>
+    </nav>
+  </div>
+  <div class="side-bottom"><div class="online"><span class="dot"></span> Panel protegido</div><p>Conectado a la API de VideoDownloader Pro. Las estadísticas se actualizan automáticamente.</p></div>
+</aside>
+<main>
+  <section id="login" class="login-wrap">
+    <div class="login"><img class="login-logo" src="https://i.postimg.cc/JyW9Jt8R/logo-lobo.png" alt="Logo">
+      <div class="eyebrow" style="text-align:center">Acceso restringido</div><h2>Bienvenido, administrador</h2>
+      <p>Inicia sesión para consultar las estadísticas y el historial de descargas.</p>
+      <form id="loginForm"><label for="password">Contraseña de administrador</label><input id="password" type="password" autocomplete="current-password" required placeholder="Tu contraseña ADMIN_PASSWORD"><button class="btn primary" id="loginBtn">Entrar al panel&nbsp; →</button><div id="loginError" class="error" role="alert"></div></form>
+    </div>
+  </section>
+  <section id="dashboard" style="display:none">
+    <header class="topbar"><div><div class="eyebrow">Control center / Overview</div><h1 id="pageTitle">Resumen general</h1><p class="subtitle">Monitorea el rendimiento de tu plataforma.</p></div><div class="top-actions"><button class="btn" id="refreshBtn">↻ Actualizar</button><button class="btn" id="csvBtn">⇩ Exportar CSV</button><img class="avatar" src="https://i.postimg.cc/JyW9Jt8R/logo-lobo.png" alt="Logo"></div></header>
+    <div class="section-page active" id="page-overview">
+      <div class="cards">
+        <article class="card"><div class="card-head">Descargas totales <span class="card-icon">⇩</span></div><div class="metric" id="total">—</div><div class="metric-note">Registros guardados en la base de datos</div></article>
+        <article class="card"><div class="card-head">Últimas 24 horas <span class="card-icon">◷</span></div><div class="metric" id="last24">—</div><div class="metric-note">Actividad reciente</div></article>
+        <article class="card"><div class="card-head">Plataformas activas <span class="card-icon">◎</span></div><div class="metric" id="platformCount">—</div><div class="metric-note">Con descargas registradas</div></article>
+        <article class="card"><div class="card-head">Últimos registros <span class="card-icon">▤</span></div><div class="metric" id="recentCount">—</div><div class="metric-note">Elementos recibidos de la API</div></article>
+      </div>
+      <div class="content-grid">
+        <section class="panel"><div class="panel-title"><h2>Actividad por plataforma</h2><span>Distribución total</span></div><div class="platform-list" id="platformBars"><div class="empty">Cargando estadísticas…</div></div><div class="chart-note">Las barras representan los conteos que devuelve el servidor.</div></section>
+        <section class="panel"><div class="panel-title"><h2>Estado del sistema</h2><span>Conexión API</span></div><div style="display:flex;align-items:center;gap:10px;margin:10px 0 15px"><span class="dot"></span><b style="color:#a8f5d2">Conectado</b></div><p style="color:var(--muted);font-size:12px;line-height:1.7">Panel autenticado mediante contraseña de administrador. Las estadísticas se consultan directamente desde el backend; esta página no almacena tu contraseña.</p><div class="toolbar-note" id="updated">Esperando actualización…</div></section>
+      </div>
+    </div>
+    <div class="section-page" id="page-downloads">
+      <section class="panel table-panel"><div class="panel-title"><h2>Historial de descargas</h2><div class="table-tools"><input id="search" placeholder="Buscar plataforma o ID…"></div></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Plataforma</th><th>Identificador</th></tr></thead><tbody id="recent"><tr><td colspan="3" class="empty">Cargando…</td></tr></tbody></table></div><div class="toolbar-note">Se muestran los registros recientes proporcionados por el backend.</div></section>
+    </div>
+    <div class="section-page" id="page-platforms">
+      <section class="panel"><div class="panel-title"><h2>Resumen de plataformas</h2><span>Conteo registrado</span></div><div class="platform-list" id="platformBars2"></div></section>
+    </div>
+    <div class="toolbar-note">VideoDownloader Pro Admin · <a href="https://luisrodrges123-cmd.github.io/videodownloader-pro-backend/" target="_blank" rel="noopener" style="color:var(--cyan)">Abrir página pública ↗</a></div>
+  </section>
+</main>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+(() => {
+ const API="https://videodownloader-pro-api.onrender.com/api/stats/admin";
+ const $=id=>document.getElementById(id);let password="",rows=[],timer=null,platformData=[];
+ const safe=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+ const fmt=v=>Number(v||0).toLocaleString("es-MX");
+ function getPlatforms(d){const p=d.platformCounts||d.platform_counts||d.byPlatform||d.platforms||{};return Array.isArray(p)?p.map(x=>[x.platform||x.name||"Otro",x.count??x.total??0]):Object.entries(p)}
+ function getRows(d){return d.recent||d.latest||d.downloads||d.items||[]}
+ function date(v){if(!v)return "—";let d=new Date(v);return Number.isNaN(d.getTime())?String(v):d.toLocaleString("es-MX")}
+ function drawBars(target){const total=platformData.reduce((a,x)=>a+Number(x[1]||0),0);$(target).innerHTML=platformData.length?platformData.map(([name,count])=>`<div class="platform-row"><div class="platform-name">${safe(name)}</div><div class="track"><div class="bar" style="width:${total?Math.max(2,Number(count)/total*100):0}%"></div></div><div class="platform-count">${fmt(count)}</div></div>`).join(""):'<div class="empty">Aún no hay datos por plataforma.</div>'}
+ function drawRows(){let q=$("search")?.value?.toLowerCase()||"";let filtered=rows.filter(r=>[r.platform,r.download_id,r.downloadId,r.id].join(" ").toLowerCase().includes(q));$("recent").innerHTML=filtered.length?filtered.map(r=>`<tr><td>${safe(date(r.created_at||r.createdAt||r.date||r.fecha))}</td><td><span class="pill">${safe(r.platform||r.plataforma||"—")}</span></td><td>${safe(r.download_id||r.downloadId||r.id||"—")}</td></tr>`).join(""):'<tr><td colspan="3" class="empty">No hay registros que coincidan.</td></tr>'}
+ async function load(){ $("refreshBtn").disabled=true;$("updated").textContent="Actualizando…";try{let r=await fetch(API,{headers:{"x-admin-password":password},cache:"no-store"});let d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"No se pudieron consultar las estadísticas.");$("total").textContent=fmt(d.totalDownloads??d.total_downloads??d.total);$("last24").textContent=fmt(d.last24Hours??d.last24hours??d.last_24_hours);platformData=getPlatforms(d);$("platformCount").textContent=fmt(platformData.length);drawBars("platformBars");drawBars("platformBars2");rows=getRows(d);$("recentCount").textContent=fmt(rows.length);drawRows();$("updated").textContent="Última actualización: "+new Date().toLocaleTimeString("es-MX");}catch(e){$("updated").textContent=e.message;if(/autorizado|contraseña/i.test(e.message))logout(e.message)}finally{$("refreshBtn").disabled=false}}
+ function logout(msg=""){password="";if(timer)clearInterval(timer);timer=null;$("dashboard").style.display="none";$("login").style.display="block";$("password").value="";$("loginError").textContent=msg}
+ $("loginForm").addEventListener("submit",async e=>{e.preventDefault();password=$("password").value;$("loginBtn").disabled=true;$("loginError").textContent="";try{let r=await fetch(API,{headers:{"x-admin-password":password},cache:"no-store"});let d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||"Contraseña incorrecta.");$("login").style.display="none";$("dashboard").style.display="block";await load();timer=setInterval(load,30000)}catch(err){password="";$("loginError").textContent=err.message}finally{$("loginBtn").disabled=false}});
+ $("refreshBtn").addEventListener("click",load);$("search").addEventListener("input",drawRows);
+ $("csvBtn").addEventListener("click",()=>{let lines=[["fecha","plataforma","id"],...rows.map(r=>[r.created_at||r.createdAt||r.date||"",r.platform||"",r.download_id||r.downloadId||r.id||""])];let csv=lines.map(a=>a.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n");let blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="videodownloader-historial.csv";a.click();URL.revokeObjectURL(url)});
+ document.querySelectorAll(".nav-item").forEach(a=>a.addEventListener("click",()=>{document.querySelectorAll(".nav-item").forEach(n=>n.classList.remove("active"));a.classList.add("active");document.querySelectorAll(".section-page").forEach(p=>p.classList.remove("active"));$("page-"+a.dataset.page).classList.add("active");$("pageTitle").textContent=({overview:"Resumen general",downloads:"Historial de descargas",platforms:"Plataformas"})[a.dataset.page]}));
+})();
+</script>
+</body>
+</html>
