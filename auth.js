@@ -14,17 +14,30 @@ const getSecret = () => {
 };
 
 // Crear tabla de usuarios
-export async function initAuthDb() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id SERIAL PRIMARY KEY,
-      username VARCHAR(30) UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      is_blocked BOOLEAN DEFAULT FALSE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+
+export async function requiredAuth(req, res, next) {
+  try {
+    await new Promise((resolve, reject) => {
+      optionalAuth(req, res, (error) => {
+        if (error) return reject(error);
+        resolve();
+      });
+    });
+
+    if (res.headersSent) return;
+
+    if (!req.user) {
+      return res.status(401).json({
+        error: "Debes iniciar sesión"
+      });
+    }
+
+    next();
+  } catch (error) {
+    next(error);
+  }
 }
+
 
 // Revisar el token del usuario
 export async function optionalAuth(req, res, next) {
