@@ -13,7 +13,7 @@ body{margin:0;background:radial-gradient(circle at top,#1b2c54,#0b1020 55%);colo
 button,input{font:inherit}
 button{cursor:pointer}
 .wrap{max-width:1050px;margin:auto;padding:20px 16px 50px}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:48px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:30px}
 .brand{display:flex;align-items:center;gap:11px;font-weight:900;font-size:19px}
 .brand img{width:48px;height:48px;object-fit:contain}
 .brand span{color:var(--cyan)}
@@ -26,7 +26,7 @@ header{display:flex;align-items:center;justify-content:space-between;gap:12px;ma
 h1{font-size:clamp(34px,7vw,58px);margin:18px 0 12px;letter-spacing:-2px}
 h1 span{color:var(--cyan)}
 .hero p{color:var(--muted);line-height:1.6}
-.card{background:#151d35eF;border:1px solid var(--line);border-radius:22px;padding:24px;box-shadow:0 20px 70px #0005}
+.card{background:#151d35ef;border:1px solid var(--line);border-radius:22px;padding:24px;box-shadow:0 20px 70px #0005}
 .main{max-width:790px;margin:auto}
 .label{display:block;font-size:13px;font-weight:800;margin-bottom:10px}
 .urlrow{display:flex;gap:10px}
@@ -65,8 +65,22 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
 .wide{width:100%;margin-top:9px;min-height:45px}
 .message{font-size:13px;color:var(--muted);line-height:1.5;margin-top:12px}
 .account{display:none;align-items:center;gap:9px;color:#a8f2db;font-size:12px;font-weight:800}
+
+/* Avisos y mantenimiento */
+.notice-area{max-width:790px;margin:0 auto 18px}
+.notice{padding:15px 17px;border-radius:13px;margin-bottom:10px;border:1px solid var(--line);background:var(--panel);line-height:1.5}
+.notice.normal{border-color:#4388ff}
+.notice.importante{border-color:#e9b949;background:#392e18}
+.notice.urgente{border-color:#ff687b;background:#3a1924}
+.notice strong{display:block;margin-bottom:5px}
+.notice p{margin:0;color:#e0e8fa;font-size:13px;white-space:pre-wrap}
+.maintenance{display:none;max-width:790px;margin:0 auto 18px;padding:22px;border:1px solid #ff687b;background:#3a1924;border-radius:16px;text-align:center}
+.maintenance.show{display:block}
+.maintenance h2{margin:0 0 8px;color:#ff9aa7}
+.maintenance p{margin:0;color:#ffe0e4;line-height:1.5}
+.access-info{display:none;text-align:center;color:var(--muted);font-size:12px;margin-top:12px}
 @media(max-width:600px){
- header{align-items:flex-start;margin-bottom:35px}
+ header{align-items:flex-start;margin-bottom:30px}
  .brand{font-size:15px}.brand img{width:39px;height:39px}
  .actions{justify-content:flex-end}
  .btn{padding:9px 10px;font-size:12px}
@@ -94,6 +108,13 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
   </div>
 </header>
 
+<div class="notice-area" id="noticeArea"></div>
+
+<div class="maintenance" id="maintenanceBox">
+  <h2>🔧 Estamos en mantenimiento</h2>
+  <p>Estamos realizando mejoras. Por favor, vuelve a intentarlo más tarde.</p>
+</div>
+
 <section class="hero">
   <div class="badge">⚡ DESCARGADOR MULTIPLATAFORMA</div>
   <h1>Descarga tus videos <span>fácilmente</span></h1>
@@ -104,7 +125,7 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
   <label class="label" for="videoUrl">Pega aquí el enlace del video</label>
   <div class="urlrow">
     <input id="videoUrl" type="url" placeholder="https://..." autocomplete="url">
-    <button class="btn primary" id="analyzeBtn" onclick="analyzeVideo()">DESCARGAR VIDEO</button>
+    <button class="btn primary" id="analyzeBtn" onclick="analyzeVideo()" disabled>DESCARGAR VIDEO</button>
   </div>
 
   <div class="platforms">
@@ -122,6 +143,7 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
     <div class="downloads" id="downloadLinks"></div>
   </div>
 
+  <p class="access-info" id="accessInfo"></p>
   <p class="note">Usa únicamente enlaces de contenido público que tengas derecho o autorización para descargar. La disponibilidad depende de la plataforma y del proveedor de descarga.</p>
 </main>
 
@@ -160,10 +182,18 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
 
 <script>
 const API = "https://videodownloader-pro-api.onrender.com";
+
 let authMode = "login";
 let token = localStorage.getItem("vdp_token") || "";
 let currentUser = null;
 let pollingTimer = null;
+
+let appSettings = {
+  freeMode: true,
+  maintenanceMode: false
+};
+
+let settingsLoaded = false;
 
 function showStatus(title, message, progress = 15) {
   document.getElementById("statusBox").classList.add("show");
@@ -224,6 +254,7 @@ async function submitAuth(event) {
 
     closeModal();
     updateAccount();
+    applyAppSettings();
   } catch (error) {
     document.getElementById("authMessage").textContent = error.message;
   } finally {
@@ -237,10 +268,26 @@ function updateAccount() {
   document.getElementById("authButtons").style.display = logged ? "none" : "flex";
   document.getElementById("accountBox").style.display = logged ? "flex" : "none";
   document.getElementById("accountName").textContent = logged ? "👤 " + currentUser.username : "";
+
+  const info = document.getElementById("accessInfo");
+  if (appSettings.freeMode) {
+    info.textContent = "Descargas gratuitas disponibles para todos.";
+    info.style.display = "block";
+  } else if (logged) {
+    info.textContent = "Modo gratuito desactivado: tu cuenta permite acceder a las descargas.";
+    info.style.display = "block";
+  } else {
+    info.textContent = "Inicia sesión o crea una cuenta para poder descargar.";
+    info.style.display = "block";
+  }
 }
 
 async function checkSession() {
-  if (!token) return updateAccount();
+  if (!token) {
+    currentUser = null;
+    updateAccount();
+    return;
+  }
 
   try {
     const response = await fetch(API + "/api/auth/me", {
@@ -258,6 +305,7 @@ async function checkSession() {
   }
 
   updateAccount();
+  applyAppSettings();
 }
 
 function logout() {
@@ -265,6 +313,7 @@ function logout() {
   currentUser = null;
   localStorage.removeItem("vdp_token");
   updateAccount();
+  applyAppSettings();
 }
 
 function getHistory() {
@@ -330,10 +379,128 @@ function clearHistory() {
   renderHistory();
 }
 
+function applyAppSettings() {
+  const maintenance = document.getElementById("maintenanceBox");
+  const button = document.getElementById("analyzeBtn");
+
+  maintenance.classList.toggle("show", appSettings.maintenanceMode);
+
+  const requiresLogin = !appSettings.freeMode && !token;
+
+  button.disabled =
+    !settingsLoaded ||
+    appSettings.maintenanceMode ||
+    requiresLogin;
+
+  if (appSettings.maintenanceMode) {
+    showStatus(
+      "🔧 Estamos en mantenimiento",
+      "Las descargas están temporalmente deshabilitadas.",
+      0
+    );
+  } else if (requiresLogin) {
+    showStatus(
+      "Necesitas una cuenta",
+      "Inicia sesión o crea una cuenta para descargar videos.",
+      0
+    );
+  } else if (settingsLoaded) {
+    document.getElementById("statusBox").classList.remove("show");
+  }
+
+  updateAccount();
+}
+
+async function loadPublicSettings() {
+  try {
+    const response = await fetch(API + "/api/stats/public-settings", {
+      cache: "no-store"
+    });
+
+    if (!response.ok) throw new Error("No se pudo consultar la configuración.");
+
+    const data = await response.json();
+
+    if (!data.ok || !data.settings) {
+      throw new Error("Configuración inválida.");
+    }
+
+    appSettings = {
+      freeMode: data.settings.freeMode !== false,
+      maintenanceMode: data.settings.maintenanceMode === true
+    };
+
+    settingsLoaded = true;
+    applyAppSettings();
+  } catch (error) {
+    settingsLoaded = false;
+    document.getElementById("analyzeBtn").disabled = true;
+    showStatus(
+      "No se pudo verificar el servicio",
+      "No podemos comprobar los permisos de descarga. Intenta recargar la página.",
+      0
+    );
+    console.error("Configuración pública:", error);
+  }
+}
+
+async function loadPublicMessages() {
+  const area = document.getElementById("noticeArea");
+
+  try {
+    const response = await fetch(API + "/api/stats/messages", {
+      cache: "no-store"
+    });
+
+    if (!response.ok) throw new Error("No se pudieron cargar los mensajes.");
+
+    const data = await response.json();
+    area.replaceChildren();
+
+    if (!Array.isArray(data.messages)) return;
+
+    data.messages.forEach(message => {
+      const notice = document.createElement("div");
+      const type = ["normal", "importante", "urgente"].includes(message.type)
+        ? message.type
+        : "normal";
+
+      notice.className = "notice " + type;
+
+      const title = document.createElement("strong");
+      title.textContent = message.title;
+
+      const content = document.createElement("p");
+      content.textContent = message.message;
+
+      notice.append(title, content);
+      area.append(notice);
+    });
+  } catch (error) {
+    console.error("Mensajes públicos:", error);
+  }
+}
+
 async function analyzeVideo() {
   const url = document.getElementById("videoUrl").value.trim();
   const button = document.getElementById("analyzeBtn");
   const links = document.getElementById("downloadLinks");
+
+  if (!settingsLoaded) {
+    showStatus("Verificando servicio","Espera un momento y vuelve a intentarlo.",0);
+    return;
+  }
+
+  if (appSettings.maintenanceMode) {
+    showStatus("Estamos en mantenimiento","Las descargas están temporalmente deshabilitadas.",0);
+    return;
+  }
+
+  if (!appSettings.freeMode && !token) {
+    showStatus("Necesitas una cuenta","Para descargar videos debes iniciar sesión o crear una cuenta.",0);
+    openModal("login");
+    return;
+  }
 
   if (!url) {
     showStatus("Falta el enlace","Pega primero el enlace del video.",0);
@@ -365,23 +532,43 @@ async function analyzeVideo() {
   } catch (error) {
     showStatus("No se pudo iniciar",error.message || "Ocurrió un error al procesar el video.",0);
   } finally {
-    button.disabled = false;
+    applyAppSettings();
   }
 }
 
 async function startDownload(url, platform) {
   showStatus("Solicitando descarga...","Enviando el video al proveedor.",35);
 
+  const headers = {"Content-Type":"application/json"};
+
+  // Si existe sesión, enviamos el token al backend.
+  if (token) {
+    headers.Authorization = "Bearer " + token;
+  }
+
   const response = await fetch(API + "/api/download", {
     method:"POST",
-    headers:{"Content-Type":"application/json"},
+    headers,
     body:JSON.stringify({url})
   });
 
   const data = await response.json();
 
-  if (!response.ok) throw new Error(data.error || "No se pudo iniciar la descarga.");
-  if (!data.downloadId) throw new Error("El proveedor no devolvió un identificador.");
+  if (!response.ok) {
+    if (response.status === 401) {
+      token = "";
+      currentUser = null;
+      localStorage.removeItem("vdp_token");
+      updateAccount();
+      applyAppSettings();
+    }
+
+    throw new Error(data.error || "No se pudo iniciar la descarga.");
+  }
+
+  if (!data.downloadId) {
+    throw new Error("El proveedor no devolvió un identificador.");
+  }
 
   showStatus("Procesando video","Tu video está siendo preparado. No cierres esta página.",50);
   pollDownload(data.downloadId,url,platform);
@@ -389,7 +576,14 @@ async function startDownload(url, platform) {
 
 async function pollDownload(id,url,platform) {
   try {
-    const response = await fetch(API + "/api/download/" + encodeURIComponent(id));
+    const headers = {};
+    if (token) headers.Authorization = "Bearer " + token;
+
+    const response = await fetch(
+      API + "/api/download/" + encodeURIComponent(id),
+      {headers}
+    );
+
     const data = await response.json();
 
     if (!response.ok) throw new Error(data.error || "Error consultando el estado.");
@@ -413,10 +607,9 @@ async function pollDownload(id,url,platform) {
         link.rel = "noopener";
         container.append(link);
 
-        showStatus("¡Video listo!","Iniciando la descarga automáticamente...",100);
+        showStatus("¡Video listo!","Tu video está preparado.",100);
         saveHistory(url,platform || data.platform || "Video","Listo");
 
-        // Descarga automáticamente el primer archivo disponible.
         link.click();
       }
       return;
@@ -440,6 +633,12 @@ document.getElementById("videoUrl").addEventListener("keydown", event => {
 
 checkSession();
 renderHistory();
+loadPublicSettings();
+loadPublicMessages();
+
+// Actualizar los ajustes cada 30 segundos y los mensajes cada minuto.
+setInterval(loadPublicSettings,30000);
+setInterval(loadPublicMessages,60000);
 </script>
 </body>
 </html>
