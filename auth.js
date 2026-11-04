@@ -6,22 +6,75 @@ import { pool } from "./db.js";
 
 const router = express.Router();
 
-const getSecret = () => {
-  if (!process.env.AUTH_SECRET) {
-    throw new Error("Falta configurar AUTH_SECRET");
+function getSecret() {
+  if (!process.env.AUTH_SECRET || process.env.AUTH_SECRET.length < 32) {
+    throw new Error("AUTH_SECRET debe tener al menos 32 caracteres");
   }
+
   return process.env.AUTH_SECRET;
-};
+}
 
 // Crear tabla de usuarios
+export async function initAuthDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      username VARCHAR(30) UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      is_blocked BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+}
 
+// Comprobar sesión opcional
+export async function optionalAuth(req, res, next) {
+  try {
+    const header = req.headers.authorization || "";
+
+    if (!header.startsWith("Bearer ")) {
+      req.user = null;
+      return next();
+    }
+
+    const token = header.slice(7);
+    const decoded = jwt.verify(token, getSecret());
+
+    const result = await pool.query(
+      `SELECT id, username, is_blocked
+       FROM users
+       WHERE id = $1`,
+      [decoded.id]
+    );
+
+    if (!result.rows.length || result.rows[0].is_blocked) {
+      return res.status(401).json({
+        error: "Cuenta no disponible"
+      });
+    }
+
+    req.user = {
+      id: result.rows[0].id,
+      username: result.rows[0].username
+    };
+
+    return next();
+  } catch (error) {
+    return res.status(401).json({
+      error: "Sesión inválida o expirada"
+    });
+  }
+}
+
+// Exigir inicio de sesión
 export async function requiredAuth(req, res, next) {
   try {
-    await new Promise((resolve, reject) => {
-      optionalAuth(req, res, (error) => {
-        if (error) return reject(error);
-        resolve();
-      });
+    await optionalAuth(req, res, () => {
+      if (!req.user && !res.headersSent) {
+        res.status(401).json({
+          error: "Debes iniciar sesión"
+        });
+      }
     });
 
     if (res.headersSent) return;
@@ -32,53 +85,13 @@ export async function requiredAuth(req, res, next) {
       });
     }
 
-    next();
+    return next();
   } catch (error) {
-    next(error);
+    return next(error);
   }
 }
 
-
-// Revisar el token del usuario
-export async function optionalAuth(req, res, next) {
-  try {
-    const header = req.headers.authorization || "";
-    const token = header.startsWith("Bearer ")
-      ? header.slice(7)
-      : null;
-
-    if (!token) {
-      req.user = null;
-      return next();
-    }
-
-    const decoded = jwt.verify(token, getSecret());
-
-    const result = await pool.query(
-      "SELECT id, username, is_blocked FROM users WHERE id = $1",
-      [decoded.id]
-    );
-
-    if (!result.rows.length || result.rows[0].is_blocked) {
-      return res.status(401).json({
-        error: "Cuenta no disponible"
-      });
-    }
-
-    req.user = result.rows[0];
-    next();
-  } catch (error) {
-    return res.status(401).json({
-      error: "Sesión inválida o expirada"
-    });
-  }
-}
-
-// Exigir que el usuario tenga sesión
-export function requiredAuth(req, res, next) {
-  
-
-// Registro
+// Registrar usuario
 router.post("/register", async (req, res) => {
   try {
     const username = String(req.body.username || "")
@@ -116,7 +129,7 @@ router.post("/register", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "Cuenta creada correctamente",
       token,
       user
@@ -129,13 +142,14 @@ router.post("/register", async (req, res) => {
     }
 
     console.error("Error en registro:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       error: "No se pudo crear la cuenta"
     });
   }
 });
 
-// Inicio de sesión
+// Iniciar sesión
 router.post("/login", async (req, res) => {
   try {
     const username = String(req.body.username || "")
@@ -146,7 +160,8 @@ router.post("/login", async (req, res) => {
 
     const result = await pool.query(
       `SELECT id, username, password_hash, is_blocked
-       FROM users WHERE username = $1`,
+       FROM users
+       WHERE username = $1`,
       [username]
     );
 
@@ -175,7 +190,7 @@ router.post("/login", async (req, res) => {
       { expiresIn: "7d" }
     );
 
-    res.json({
+    return res.json({
       message: "Sesión iniciada",
       token,
       user: {
@@ -185,15 +200,18 @@ router.post("/login", async (req, res) => {
     });
   } catch (error) {
     console.error("Error en login:", error);
-    res.status(500).json({
+
+    return res.status(500).json({
       error: "No se pudo iniciar sesión"
     });
   }
 });
 
-// Consultar sesión actual
+// Consultar usuario conectado
 router.get("/me", requiredAuth, (req, res) => {
-  res.json({ user: req.user });
+  return res.json({
+    user: req.user
+  });
 });
 
 export default router;
