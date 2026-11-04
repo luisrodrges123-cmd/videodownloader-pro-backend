@@ -1,10 +1,11 @@
 
 import { Router } from "express";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { validateVideoUrl } from "./platforms.js";
+import { pool } from "./db.js";
 
 const router = Router();
-
 const API_BASE = "https://knightvision.ai/api/v1/partner";
 
 function getApiKey() {
@@ -14,9 +15,7 @@ function getApiKey() {
 async function knightvision(path, options = {}) {
   const key = getApiKey();
 
-  if (!key) {
-    throw new Error("Falta configurar KNIGHTVISION_API_KEY en Render.");
-  }
+  if (!key) throw new Error("Falta configurar KNIGHTVISION_API_KEY.");
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -35,7 +34,7 @@ async function knightvision(path, options = {}) {
   return response;
 }
 
-// Solicitar una descarga
+// Solicitar descarga
 router.post("/", async (req, res) => {
   try {
     const result = validateVideoUrl(req.body?.url);
@@ -51,7 +50,7 @@ router.post("/", async (req, res) => {
 
     const data = await response.json();
 
-    return res.status(202).json({
+    res.status(202).json({
       ok: true,
       downloadId: data.download_id,
       status: data.status,
@@ -59,19 +58,17 @@ router.post("/", async (req, res) => {
       message: "Video enviado a procesamiento."
     });
   } catch (error) {
-    return res.status(502).json({
-      error: error.message || "No se pudo solicitar la descarga."
-    });
+    res.status(502).json({ error: error.message });
   }
 });
 
-// Consultar el estado
+// Consultar estado
 router.get("/:id", async (req, res) => {
   try {
     const id = req.params.id;
 
     if (!/^kv-[a-zA-Z0-9-]+$/.test(id)) {
-      return res.status(400).json({ error: "ID de descarga inválido." });
+      return res.status(400).json({ error: "ID inválido." });
     }
 
     const response = await knightvision(
@@ -80,7 +77,7 @@ router.get("/:id", async (req, res) => {
 
     const data = await response.json();
 
-    return res.json({
+    res.json({
       ok: true,
       downloadId: data.download_id,
       status: data.status,
@@ -95,11 +92,11 @@ router.get("/:id", async (req, res) => {
       }))
     });
   } catch (error) {
-    return res.status(502).json({ error: error.message });
+    res.status(502).json({ error: error.message });
   }
 });
 
-// Entregar el archivo al visitante
+// Entregar archivo y registrar descarga terminada
 router.get("/:id/file/:idx", async (req, res) => {
   try {
     const { id, idx } = req.params;
@@ -114,24 +111,40 @@ router.get("/:id/file/:idx", async (req, res) => {
       `/social-download/${encodeURIComponent(id)}/file/${idx}${suffix}`
     );
 
+    if (!response.body) {
+      return res.status(502).json({ error: "Archivo vacío." });
+    }
+
     res.setHeader(
       "Content-Type",
       response.headers.get("content-type") || "video/mp4"
     );
 
     const disposition = response.headers.get("content-disposition");
-    if (disposition) {
-      res.setHeader("Content-Disposition", disposition);
-    }
+    if (disposition) res.setHeader("Content-Disposition", disposition);
 
     const length = response.headers.get("content-length");
     if (length) res.setHeader("Content-Length", length);
 
-    if (!response.body) {
-      return res.status(502).json({ error: "Archivo vacío." });
+    await pipeline(Readable.fromWeb(response.body), res);
+
+    // Solo se registra si el envío terminó correctamente.
+    try {
+      const statusResponse = await knightvision(
+        `/social-download/${encodeURIComponent(id)}`
+      );
+      const data = await statusResponse.json();
+
+      const platform = String(data.platform || "unknown").toLowerCase();
+
+      await pool.query(
+        "INSERT INTO downloads (platform) VALUES ($1)",
+        [platform]
+      );
+    } catch (dbError) {
+      console.error("No se pudo registrar la descarga:", dbError.message);
     }
 
-    Readable.fromWeb(response.body).pipe(res);
   } catch (error) {
     if (!res.headersSent) {
       res.status(502).json({ error: error.message });
