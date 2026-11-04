@@ -6,102 +6,496 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#10152c">
 <title>VideoDownloader Pro</title>
+
 <style>
-:root{--bg:#0b1020;--panel:#151d35;--panel2:#1c2744;--blue:#4388ff;--cyan:#38d9ff;--text:#f5f7ff;--muted:#9eacc8;--line:#2a385b;--green:#36d399;--red:#ff687b}
+:root{
+  --bg:#0b1020;
+  --panel:#151d35;
+  --panel2:#1c2744;
+  --blue:#4388ff;
+  --cyan:#38d9ff;
+  --text:#f5f7ff;
+  --muted:#9eacc8;
+  --line:#2a385b;
+  --green:#36d399;
+  --red:#ff687b;
+}
+
 *{box-sizing:border-box}
-body{margin:0;background:radial-gradient(circle at top,#1b2c54,#0b1020 55%);color:var(--text);font-family:Arial,system-ui,sans-serif;min-height:100vh}
+
+body{
+  margin:0;
+  background:radial-gradient(circle at top,#1b2c54,#0b1020 55%);
+  color:var(--text);
+  font-family:Arial,system-ui,sans-serif;
+  min-height:100vh;
+}
+
 button,input{font:inherit}
 button{cursor:pointer}
-.wrap{max-width:1050px;margin:auto;padding:20px 16px 50px}
-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:30px}
-.brand{display:flex;align-items:center;gap:11px;font-weight:900;font-size:19px}
-.brand img{width:48px;height:48px;object-fit:contain}
-.brand span{color:var(--cyan)}
-.actions{display:flex;gap:8px;flex-wrap:wrap}
-.btn{border:1px solid var(--line);background:var(--panel2);color:white;padding:11px 15px;border-radius:12px;font-weight:700}
-.btn.primary{border:0;background:linear-gradient(120deg,#347aff,#27b8ee)}
-.btn:disabled{opacity:.5;cursor:not-allowed}
-.hero{text-align:center;margin:0 auto 28px;max-width:720px}
-.badge{display:inline-block;background:#173b61;color:#6fe3ff;padding:8px 13px;border-radius:30px;font-size:12px;font-weight:800}
-h1{font-size:clamp(34px,7vw,58px);margin:18px 0 12px;letter-spacing:-2px}
-h1 span{color:var(--cyan)}
-.hero p{color:var(--muted);line-height:1.6}
-.card{background:#151d35ef;border:1px solid var(--line);border-radius:22px;padding:24px;box-shadow:0 20px 70px #0005}
-.main{max-width:790px;margin:auto}
-.label{display:block;font-size:13px;font-weight:800;margin-bottom:10px}
-.urlrow{display:flex;gap:10px}
-input{width:100%;background:#0d152b;color:white;border:1px solid var(--line);border-radius:12px;padding:16px;outline:none}
-input:focus{border-color:var(--cyan)}
-.urlrow button{white-space:nowrap}
-.platforms{display:flex;justify-content:center;gap:9px;flex-wrap:wrap;margin:18px 0}
-.platform{font-size:12px;color:#c2d2ef;border:1px solid var(--line);padding:8px 12px;border-radius:30px}
-.note{text-align:center;color:var(--muted);font-size:12px;line-height:1.6;margin-top:18px}
-.status{display:none;margin-top:20px;padding:16px;border-radius:14px;background:#0d152b;border:1px solid var(--line)}
-.status.show{display:block}
-.status-title{font-weight:800}
-.status-msg{color:var(--muted);font-size:13px;line-height:1.5;margin-top:8px}
-.progress{height:7px;background:#263453;border-radius:20px;overflow:hidden;margin-top:13px}
-.progress div{height:100%;width:20%;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:width .3s}
-.downloads{display:grid;gap:9px;margin-top:13px}
-.download-link{display:block;text-decoration:none;background:#173b61;color:#fff;padding:13px;border-radius:11px;font-weight:800;text-align:center}
-.section{max-width:790px;margin:30px auto}
-.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.section h2{font-size:17px;margin:0}
-.muted{font-size:12px;color:var(--muted)}
-.history-item{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);padding:13px;border-radius:12px;margin-bottom:8px}
-.history-url{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:700}
-.history-date{font-size:11px;color:var(--muted);margin-top:5px}
-.empty{text-align:center;color:var(--muted);padding:20px;border:1px dashed var(--line);border-radius:13px;font-size:13px}
-footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
-.modal{position:fixed;inset:0;background:#000b;display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
-.modal.show{display:flex}
-.modal-box{width:100%;max-width:410px;background:#151d35;border:1px solid var(--line);border-radius:20px;padding:24px}
-.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
-.modal-head h2{margin:0;font-size:21px}
-.close{border:0;background:transparent;color:white;font-size:25px}
-.field{margin-bottom:13px}
-.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:7px}
-.field input{padding:13px}
-.wide{width:100%;margin-top:9px;min-height:45px}
-.message{font-size:13px;color:var(--muted);line-height:1.5;margin-top:12px}
-.account{display:none;align-items:center;gap:9px;color:#a8f2db;font-size:12px;font-weight:800}
 
-/* Avisos y mantenimiento */
-.notice-area{max-width:790px;margin:0 auto 18px}
-.notice{padding:15px 17px;border-radius:13px;margin-bottom:10px;border:1px solid var(--line);background:var(--panel);line-height:1.5}
+.wrap{
+  max-width:1050px;
+  margin:auto;
+  padding:20px 16px 50px;
+}
+
+header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:30px;
+}
+
+.brand{
+  display:flex;
+  align-items:center;
+  gap:11px;
+  font-weight:900;
+  font-size:19px;
+}
+
+.brand img{
+  width:48px;
+  height:48px;
+  object-fit:contain;
+}
+
+.brand span{color:var(--cyan)}
+
+.actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.btn{
+  border:1px solid var(--line);
+  background:var(--panel2);
+  color:white;
+  padding:11px 15px;
+  border-radius:12px;
+  font-weight:700;
+}
+
+.btn.primary{
+  border:0;
+  background:linear-gradient(120deg,#347aff,#27b8ee);
+}
+
+.btn:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+.hero{
+  text-align:center;
+  margin:0 auto 28px;
+  max-width:720px;
+}
+
+.badge{
+  display:inline-block;
+  background:#173b61;
+  color:#6fe3ff;
+  padding:8px 13px;
+  border-radius:30px;
+  font-size:12px;
+  font-weight:800;
+}
+
+h1{
+  font-size:clamp(34px,7vw,58px);
+  margin:18px 0 12px;
+  letter-spacing:-2px;
+}
+
+h1 span{color:var(--cyan)}
+
+.hero p{
+  color:var(--muted);
+  line-height:1.6;
+}
+
+.card{
+  background:#151d35ef;
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:24px;
+  box-shadow:0 20px 70px #0005;
+}
+
+.main{
+  max-width:790px;
+  margin:auto;
+}
+
+.label{
+  display:block;
+  font-size:13px;
+  font-weight:800;
+  margin-bottom:10px;
+}
+
+.urlrow{
+  display:flex;
+  gap:10px;
+}
+
+input{
+  width:100%;
+  background:#0d152b;
+  color:white;
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:16px;
+  outline:none;
+}
+
+input:focus{border-color:var(--cyan)}
+
+.urlrow button{white-space:nowrap}
+
+.platforms{
+  display:flex;
+  justify-content:center;
+  gap:9px;
+  flex-wrap:wrap;
+  margin:18px 0;
+}
+
+.platform{
+  font-size:12px;
+  color:#c2d2ef;
+  border:1px solid var(--line);
+  padding:8px 12px;
+  border-radius:30px;
+}
+
+.note{
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.6;
+  margin-top:18px;
+}
+
+.status{
+  display:none;
+  margin-top:20px;
+  padding:16px;
+  border-radius:14px;
+  background:#0d152b;
+  border:1px solid var(--line);
+}
+
+.status.show{display:block}
+
+.status-title{font-weight:800}
+
+.status-msg{
+  color:var(--muted);
+  font-size:13px;
+  line-height:1.5;
+  margin-top:8px;
+  white-space:pre-wrap;
+}
+
+.progress{
+  height:7px;
+  background:#263453;
+  border-radius:20px;
+  overflow:hidden;
+  margin-top:13px;
+}
+
+.progress div{
+  height:100%;
+  width:20%;
+  background:linear-gradient(90deg,var(--blue),var(--cyan));
+  transition:width .3s;
+}
+
+.downloads{
+  display:grid;
+  gap:9px;
+  margin-top:13px;
+}
+
+.download-link{
+  display:block;
+  text-decoration:none;
+  background:#173b61;
+  color:#fff;
+  padding:13px;
+  border-radius:11px;
+  font-weight:800;
+  text-align:center;
+  border:0;
+  width:100%;
+}
+
+.download-link:disabled{
+  opacity:.5;
+  cursor:wait;
+}
+
+.section{
+  max-width:790px;
+  margin:30px auto;
+}
+
+.section-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:12px;
+}
+
+.section h2{
+  font-size:17px;
+  margin:0;
+}
+
+.muted{
+  font-size:12px;
+  color:var(--muted);
+}
+
+.history-item{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  background:var(--panel);
+  border:1px solid var(--line);
+  padding:13px;
+  border-radius:12px;
+  margin-bottom:8px;
+}
+
+.history-url{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-size:13px;
+  font-weight:700;
+}
+
+.history-date{
+  font-size:11px;
+  color:var(--muted);
+  margin-top:5px;
+}
+
+.empty{
+  text-align:center;
+  color:var(--muted);
+  padding:20px;
+  border:1px dashed var(--line);
+  border-radius:13px;
+  font-size:13px;
+}
+
+footer{
+  text-align:center;
+  color:#71809d;
+  font-size:12px;
+  margin-top:45px;
+}
+
+.modal{
+  position:fixed;
+  inset:0;
+  background:#000b;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  z-index:10;
+}
+
+.modal.show{display:flex}
+
+.modal-box{
+  width:100%;
+  max-width:410px;
+  background:#151d35;
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:24px;
+}
+
+.modal-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:18px;
+}
+
+.modal-head h2{
+  margin:0;
+  font-size:21px;
+}
+
+.close{
+  border:0;
+  background:transparent;
+  color:white;
+  font-size:25px;
+}
+
+.field{margin-bottom:13px}
+
+.field label{
+  display:block;
+  font-size:12px;
+  color:var(--muted);
+  margin-bottom:7px;
+}
+
+.field input{padding:13px}
+
+.wide{
+  width:100%;
+  margin-top:9px;
+  min-height:45px;
+}
+
+.message{
+  font-size:13px;
+  color:var(--muted);
+  line-height:1.5;
+  margin-top:12px;
+}
+
+.account{
+  display:none;
+  align-items:center;
+  gap:9px;
+  color:#a8f2db;
+  font-size:12px;
+  font-weight:800;
+}
+
+/* Avisos */
+
+.notice-area{
+  max-width:790px;
+  margin:0 auto 18px;
+}
+
+.notice{
+  padding:15px 17px;
+  border-radius:13px;
+  margin-bottom:10px;
+  border:1px solid var(--line);
+  background:var(--panel);
+  line-height:1.5;
+}
+
 .notice.normal{border-color:#4388ff}
-.notice.importante{border-color:#e9b949;background:#392e18}
-.notice.urgente{border-color:#ff687b;background:#3a1924}
-.notice strong{display:block;margin-bottom:5px}
-.notice p{margin:0;color:#e0e8fa;font-size:13px;white-space:pre-wrap}
-.maintenance{display:none;max-width:790px;margin:0 auto 18px;padding:22px;border:1px solid #ff687b;background:#3a1924;border-radius:16px;text-align:center}
+.notice.importante{
+  border-color:#e9b949;
+  background:#392e18;
+}
+.notice.urgente{
+  border-color:#ff687b;
+  background:#3a1924;
+}
+
+.notice strong{
+  display:block;
+  margin-bottom:5px;
+}
+
+.notice p{
+  margin:0;
+  color:#e0e8fa;
+  font-size:13px;
+  white-space:pre-wrap;
+}
+
+/* Mantenimiento */
+
+.maintenance{
+  display:none;
+  max-width:790px;
+  margin:0 auto 18px;
+  padding:22px;
+  border:1px solid #ff687b;
+  background:#3a1924;
+  border-radius:16px;
+  text-align:center;
+}
+
 .maintenance.show{display:block}
-.maintenance h2{margin:0 0 8px;color:#ff9aa7}
-.maintenance p{margin:0;color:#ffe0e4;line-height:1.5}
-.access-info{display:none;text-align:center;color:var(--muted);font-size:12px;margin-top:12px}
+
+.maintenance h2{
+  margin:0 0 8px;
+  color:#ff9aa7;
+}
+
+.maintenance p{
+  margin:0;
+  color:#ffe0e4;
+  line-height:1.5;
+}
+
+.access-info{
+  display:none;
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+  margin-top:12px;
+}
+
 @media(max-width:600px){
- header{align-items:flex-start;margin-bottom:30px}
- .brand{font-size:15px}.brand img{width:39px;height:39px}
- .actions{justify-content:flex-end}
- .btn{padding:9px 10px;font-size:12px}
- .card{padding:17px}
- .urlrow{flex-direction:column}
- .urlrow button{min-height:48px}
- .history-url{max-width:210px}
+  header{
+    align-items:flex-start;
+    margin-bottom:30px;
+  }
+
+  .brand{font-size:15px}
+  .brand img{
+    width:39px;
+    height:39px;
+  }
+
+  .actions{justify-content:flex-end}
+
+  .btn{
+    padding:9px 10px;
+    font-size:12px;
+  }
+
+  .card{padding:17px}
+
+  .urlrow{flex-direction:column}
+
+  .urlrow button{min-height:48px}
+
+  .history-url{max-width:210px}
 }
 </style>
 </head>
+
 <body>
+
 <div class="wrap">
+
 <header>
   <div class="brand">
     <img src="https://i.postimg.cc/JyW9Jt8R/logo-lobo.png" alt="Logo">
     <div>VIDEO<span>DOWNLOADER</span> PRO</div>
   </div>
+
   <div class="actions" id="authButtons">
     <button class="btn" onclick="openModal('login')">Iniciar sesión</button>
     <button class="btn primary" onclick="openModal('register')">Crear cuenta</button>
   </div>
+
   <div class="account" id="accountBox">
     <span id="accountName"></span>
     <button class="btn" onclick="logout()">Salir</button>
@@ -122,10 +516,27 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
 </section>
 
 <main class="card main">
-  <label class="label" for="videoUrl">Pega aquí el enlace del video</label>
+
+  <label class="label" for="videoUrl">
+    Pega aquí el enlace del video
+  </label>
+
   <div class="urlrow">
-    <input id="videoUrl" type="url" placeholder="https://..." autocomplete="url">
-    <button class="btn primary" id="analyzeBtn" onclick="analyzeVideo()" disabled>DESCARGAR VIDEO</button>
+    <input
+      id="videoUrl"
+      type="url"
+      placeholder="https://..."
+      autocomplete="url"
+    >
+
+    <button
+      class="btn primary"
+      id="analyzeBtn"
+      onclick="analyzeVideo()"
+      disabled
+    >
+      DESCARGAR VIDEO
+    </button>
   </div>
 
   <div class="platforms">
@@ -139,12 +550,20 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
   <div class="status" id="statusBox">
     <div class="status-title" id="statusTitle">Procesando...</div>
     <div class="status-msg" id="statusMessage"></div>
-    <div class="progress"><div id="progressBar"></div></div>
+    <div class="progress">
+      <div id="progressBar"></div>
+    </div>
     <div class="downloads" id="downloadLinks"></div>
   </div>
 
   <p class="access-info" id="accessInfo"></p>
-  <p class="note">Usa únicamente enlaces de contenido público que tengas derecho o autorización para descargar. La disponibilidad depende de la plataforma y del proveedor de descarga.</p>
+
+  <p class="note">
+    Usa únicamente enlaces de contenido público que tengas derecho
+    o autorización para descargar. La disponibilidad depende de la
+    plataforma y del proveedor de descarga.
+  </p>
+
 </main>
 
 <section class="section">
@@ -155,52 +574,124 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
   <div id="historyList"></div>
 </section>
 
-<footer>VideoDownloader Pro · Herramienta para contenido autorizado</footer>
+<footer>
+  VideoDownloader Pro · Herramienta para contenido autorizado
+</footer>
+
 </div>
+
+<!-- MODAL DE AUTENTICACIÓN -->
 
 <div class="modal" id="authModal">
   <div class="modal-box">
+
     <div class="modal-head">
       <h2 id="modalTitle">Iniciar sesión</h2>
       <button class="close" onclick="closeModal()">×</button>
     </div>
+
     <form id="authForm" onsubmit="submitAuth(event)">
+
       <div class="field">
         <label>Nombre de usuario</label>
-        <input id="username" minlength="3" maxlength="30" required autocomplete="username" placeholder="Tu usuario">
+        <input
+          id="username"
+          minlength="3"
+          maxlength="30"
+          required
+          autocomplete="username"
+          placeholder="Tu usuario"
+        >
       </div>
+
       <div class="field">
         <label>Contraseña</label>
-        <input id="password" type="password" minlength="8" maxlength="72" required autocomplete="current-password" placeholder="Mínimo 8 caracteres">
+        <input
+          id="password"
+          type="password"
+          minlength="8"
+          maxlength="72"
+          required
+          autocomplete="current-password"
+          placeholder="Mínimo 8 caracteres"
+        >
       </div>
-      <button class="btn primary wide" id="authSubmit" type="submit">Continuar</button>
+
+      <button
+        class="btn primary wide"
+        id="authSubmit"
+        type="submit"
+      >
+        Continuar
+      </button>
+
     </form>
-    <button class="btn wide" onclick="switchAuth()" id="switchButton">Crear una cuenta</button>
+
+    <button
+      class="btn wide"
+      onclick="switchAuth()"
+      id="switchButton"
+    >
+      Crear una cuenta
+    </button>
+
     <div class="message" id="authMessage"></div>
+
   </div>
 </div>
 
 <script>
+"use strict";
+
+// ========================================
+// CONFIGURACIÓN
+// ========================================
+
 const API = "https://videodownloader-pro-api.onrender.com";
 
 let authMode = "login";
 let token = localStorage.getItem("vdp_token") || "";
 let currentUser = null;
+
 let pollingTimer = null;
+let settingsLoaded = false;
+let settingsRequest = false;
 
 let appSettings = {
   freeMode: true,
   maintenanceMode: false
 };
 
-let settingsLoaded = false;
+// ========================================
+// ELEMENTOS
+// ========================================
+
+const analyzeBtn = document.getElementById("analyzeBtn");
+const videoUrl = document.getElementById("videoUrl");
+const statusBox = document.getElementById("statusBox");
+const downloadLinks = document.getElementById("downloadLinks");
+
+// ========================================
+// MENSAJES DE ESTADO
+// ========================================
 
 function showStatus(title, message, progress = 15) {
-  document.getElementById("statusBox").classList.add("show");
+  statusBox.classList.add("show");
+
   document.getElementById("statusTitle").textContent = title;
   document.getElementById("statusMessage").textContent = message;
-  document.getElementById("progressBar").style.width = progress + "%";
+
+  document.getElementById("progressBar").style.width =
+    Math.max(0, Math.min(100, progress)) + "%";
 }
+
+function hideStatus() {
+  statusBox.classList.remove("show");
+}
+
+// ========================================
+// MODAL
+// ========================================
 
 function openModal(mode) {
   authMode = mode;
@@ -219,88 +710,171 @@ function switchAuth() {
 
 function updateModal() {
   const registering = authMode === "register";
-  document.getElementById("modalTitle").textContent = registering ? "Crear cuenta" : "Iniciar sesión";
-  document.getElementById("authSubmit").textContent = registering ? "Registrarme" : "Entrar";
-  document.getElementById("switchButton").textContent = registering ? "Ya tengo una cuenta" : "Crear una cuenta";
-  document.getElementById("password").autocomplete = registering ? "new-password" : "current-password";
+
+  document.getElementById("modalTitle").textContent =
+    registering ? "Crear cuenta" : "Iniciar sesión";
+
+  document.getElementById("authSubmit").textContent =
+    registering ? "Registrarme" : "Entrar";
+
+  document.getElementById("switchButton").textContent =
+    registering ? "Ya tengo una cuenta" : "Crear una cuenta";
+
+  document.getElementById("password").autocomplete =
+    registering ? "new-password" : "current-password";
+
   document.getElementById("authMessage").textContent = "";
 }
+
+// ========================================
+// LOGIN Y REGISTRO
+// ========================================
 
 async function submitAuth(event) {
   event.preventDefault();
 
-  const username = document.getElementById("username").value.trim();
-  const password = document.getElementById("password").value;
-  const button = document.getElementById("authSubmit");
+  const username =
+    document.getElementById("username").value.trim();
+
+  const password =
+    document.getElementById("password").value;
+
+  const button =
+    document.getElementById("authSubmit");
 
   button.disabled = true;
   button.textContent = "Conectando...";
 
   try {
-    const response = await fetch(API + "/api/auth/" + authMode, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({username,password})
-    });
+    const response = await fetch(
+      API + "/api/auth/" + authMode,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          username,
+          password
+        })
+      }
+    );
 
     const data = await response.json();
 
-    if (!response.ok) throw new Error(data.error || "No se pudo completar la operación.");
-    if (!data.token || !data.user) throw new Error("El servidor no devolvió los datos de sesión.");
+    if (!response.ok) {
+      throw new Error(
+        data.error || "No se pudo completar la operación."
+      );
+    }
+
+    if (!data.token || !data.user) {
+      throw new Error(
+        "El servidor no devolvió los datos de sesión."
+      );
+    }
 
     token = data.token;
     currentUser = data.user;
+
     localStorage.setItem("vdp_token", token);
 
     closeModal();
     updateAccount();
     applyAppSettings();
+
+    showStatus(
+      "¡Sesión iniciada!",
+      "Ya puedes utilizar tu cuenta.",
+      100
+    );
+
   } catch (error) {
-    document.getElementById("authMessage").textContent = error.message;
+    document.getElementById("authMessage").textContent =
+      error.message;
+
   } finally {
     button.disabled = false;
     updateModal();
   }
 }
 
+// ========================================
+// CUENTA
+// ========================================
+
 function updateAccount() {
   const logged = Boolean(token && currentUser);
-  document.getElementById("authButtons").style.display = logged ? "none" : "flex";
-  document.getElementById("accountBox").style.display = logged ? "flex" : "none";
-  document.getElementById("accountName").textContent = logged ? "👤 " + currentUser.username : "";
+
+  document.getElementById("authButtons").style.display =
+    logged ? "none" : "flex";
+
+  document.getElementById("accountBox").style.display =
+    logged ? "flex" : "none";
+
+  document.getElementById("accountName").textContent =
+    logged ? "👤 " + currentUser.username : "";
 
   const info = document.getElementById("accessInfo");
-  if (appSettings.freeMode) {
-    info.textContent = "Descargas gratuitas disponibles para todos.";
-    info.style.display = "block";
+
+  if (!settingsLoaded) {
+    info.textContent =
+      "La configuración se verificará al solicitar una descarga.";
+  } else if (appSettings.freeMode) {
+    info.textContent =
+      "Descargas gratuitas disponibles para todos.";
   } else if (logged) {
-    info.textContent = "Modo gratuito desactivado: tu cuenta permite acceder a las descargas.";
-    info.style.display = "block";
+    info.textContent =
+      "Iniciaste sesión. Puedes acceder a las descargas.";
   } else {
-    info.textContent = "Inicia sesión o crea una cuenta para poder descargar.";
-    info.style.display = "block";
+    info.textContent =
+      "Inicia sesión o crea una cuenta para poder descargar.";
   }
+
+  info.style.display = "block";
 }
+
+// ========================================
+// COMPROBAR SESIÓN
+// ========================================
 
 async function checkSession() {
   if (!token) {
     currentUser = null;
     updateAccount();
+    applyAppSettings();
     return;
   }
 
   try {
-    const response = await fetch(API + "/api/auth/me", {
-      headers: {Authorization:"Bearer " + token}
-    });
+    const response = await fetch(
+      API + "/api/auth/me",
+      {
+        headers: {
+          Authorization: "Bearer " + token
+        },
+        cache: "no-store"
+      }
+    );
 
-    if (!response.ok) throw new Error("Sesión expirada");
+    if (!response.ok) {
+      throw new Error("Sesión expirada.");
+    }
 
     const data = await response.json();
+
+    if (!data.user) {
+      throw new Error("No se encontró el usuario.");
+    }
+
     currentUser = data.user;
-  } catch {
+
+  } catch (error) {
+    console.warn("Sesión:", error.message);
+
     token = "";
     currentUser = null;
+
     localStorage.removeItem("vdp_token");
   }
 
@@ -311,14 +885,28 @@ async function checkSession() {
 function logout() {
   token = "";
   currentUser = null;
+
   localStorage.removeItem("vdp_token");
+
   updateAccount();
   applyAppSettings();
+
+  showStatus(
+    "Sesión cerrada",
+    "Has cerrado tu sesión correctamente.",
+    100
+  );
 }
+
+// ========================================
+// HISTORIAL
+// ========================================
 
 function getHistory() {
   try {
-    return JSON.parse(localStorage.getItem("vdp_history") || "[]");
+    return JSON.parse(
+      localStorage.getItem("vdp_history") || "[]"
+    );
   } catch {
     return [];
   }
@@ -326,22 +914,32 @@ function getHistory() {
 
 function saveHistory(url, platform, status) {
   const history = getHistory();
+
   history.unshift({
     url,
     platform,
     status,
     date: new Date().toLocaleString()
   });
-  localStorage.setItem("vdp_history", JSON.stringify(history.slice(0,30)));
+
+  localStorage.setItem(
+    "vdp_history",
+    JSON.stringify(history.slice(0, 30))
+  );
+
   renderHistory();
 }
 
 function renderHistory() {
   const history = getHistory();
-  const container = document.getElementById("historyList");
+
+  const container =
+    document.getElementById("historyList");
 
   if (!history.length) {
-    container.innerHTML = '<div class="empty">Todavía no tienes descargas en este dispositivo.</div>';
+    container.innerHTML =
+      '<div class="empty">Todavía no tienes descargas en este dispositivo.</div>';
+
     return;
   }
 
@@ -360,150 +958,250 @@ function renderHistory() {
 
     const date = document.createElement("div");
     date.className = "history-date";
-    date.textContent = item.date + " · " + item.platform;
 
-    left.append(url,date);
+    date.textContent =
+      item.date + " · " + item.platform;
+
+    left.append(url, date);
 
     const tag = document.createElement("span");
     tag.className = "platform";
     tag.textContent = item.status;
 
-    row.append(left,tag);
+    row.append(left, tag);
     container.append(row);
   });
 }
 
 function clearHistory() {
-  if (!confirm("¿Borrar el historial guardado en este dispositivo?")) return;
+  if (!confirm(
+    "¿Borrar el historial guardado en este dispositivo?"
+  )) {
+    return;
+  }
+
   localStorage.removeItem("vdp_history");
   renderHistory();
 }
 
+// ========================================
+// CONFIGURACIÓN PÚBLICA
+// ========================================
+
 function applyAppSettings() {
-  const maintenance = document.getElementById("maintenanceBox");
-  const button = document.getElementById("analyzeBtn");
+  const maintenance =
+    document.getElementById("maintenanceBox");
 
-  maintenance.classList.toggle("show", appSettings.maintenanceMode);
+  const requiresLogin =
+    settingsLoaded &&
+    !appSettings.freeMode &&
+    !token;
 
-  const requiresLogin = !appSettings.freeMode && !token;
+  maintenance.classList.toggle(
+    "show",
+    settingsLoaded && appSettings.maintenanceMode
+  );
 
-  button.disabled =
-    !settingsLoaded ||
-    appSettings.maintenanceMode ||
-    requiresLogin;
+  // Si falla la consulta pública, permitimos intentar.
+  // El backend sigue verificando los permisos reales.
+  analyzeBtn.disabled =
+    settingsLoaded &&
+    (
+      appSettings.maintenanceMode ||
+      requiresLogin
+    );
 
-  if (appSettings.maintenanceMode) {
+  if (
+    settingsLoaded &&
+    appSettings.maintenanceMode
+  ) {
     showStatus(
       "🔧 Estamos en mantenimiento",
       "Las descargas están temporalmente deshabilitadas.",
       0
     );
+
   } else if (requiresLogin) {
     showStatus(
       "Necesitas una cuenta",
       "Inicia sesión o crea una cuenta para descargar videos.",
       0
     );
-  } else if (settingsLoaded) {
-    document.getElementById("statusBox").classList.remove("show");
-  }
 
-  updateAccount();
+  } else {
+    updateAccount();
+  }
 }
 
 async function loadPublicSettings() {
-  try {
-    const response = await fetch(API + "/api/stats/public-settings", {
-      cache: "no-store"
-    });
+  if (settingsRequest) return;
 
-    if (!response.ok) throw new Error("No se pudo consultar la configuración.");
+  settingsRequest = true;
+
+  try {
+    const response = await fetch(
+      API + "/api/stats/public-settings",
+      {
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        "El servidor respondió HTTP " + response.status
+      );
+    }
 
     const data = await response.json();
 
     if (!data.ok || !data.settings) {
-      throw new Error("Configuración inválida.");
+      throw new Error(
+        "La configuración recibida no es válida."
+      );
     }
 
     appSettings = {
       freeMode: data.settings.freeMode !== false,
-      maintenanceMode: data.settings.maintenanceMode === true
+      maintenanceMode:
+        data.settings.maintenanceMode === true
     };
 
     settingsLoaded = true;
+
     applyAppSettings();
+
   } catch (error) {
+    console.error(
+      "Configuración pública:",
+      error
+    );
+
+    // No bloqueamos permanentemente el botón.
+    // El backend decidirá si permite la descarga.
     settingsLoaded = false;
-    document.getElementById("analyzeBtn").disabled = true;
+
+    document.getElementById(
+      "maintenanceBox"
+    ).classList.remove("show");
+
+    analyzeBtn.disabled = false;
+
     showStatus(
-      "No se pudo verificar el servicio",
-      "No podemos comprobar los permisos de descarga. Intenta recargar la página.",
+      "No se pudo consultar la configuración",
+      "Puedes intentar continuar. El servidor comprobará tus permisos antes de iniciar la descarga.",
       0
     );
-    console.error("Configuración pública:", error);
+
+    updateAccount();
+
+  } finally {
+    settingsRequest = false;
   }
 }
 
+// ========================================
+// MENSAJES DEL ADMINISTRADOR
+// ========================================
+
 async function loadPublicMessages() {
-  const area = document.getElementById("noticeArea");
+  const area =
+    document.getElementById("noticeArea");
 
   try {
-    const response = await fetch(API + "/api/stats/messages", {
-      cache: "no-store"
-    });
+    const response = await fetch(
+      API + "/api/stats/messages",
+      {
+        cache: "no-store"
+      }
+    );
 
-    if (!response.ok) throw new Error("No se pudieron cargar los mensajes.");
+    if (!response.ok) {
+      throw new Error(
+        "No se pudieron cargar los mensajes."
+      );
+    }
 
     const data = await response.json();
+
     area.replaceChildren();
 
     if (!Array.isArray(data.messages)) return;
 
     data.messages.forEach(message => {
       const notice = document.createElement("div");
-      const type = ["normal", "importante", "urgente"].includes(message.type)
+
+      const type = [
+        "normal",
+        "importante",
+        "urgente"
+      ].includes(message.type)
         ? message.type
         : "normal";
 
       notice.className = "notice " + type;
 
       const title = document.createElement("strong");
-      title.textContent = message.title;
+      title.textContent = message.title || "Aviso";
 
       const content = document.createElement("p");
-      content.textContent = message.message;
+      content.textContent = message.message || "";
 
       notice.append(title, content);
       area.append(notice);
     });
+
   } catch (error) {
-    console.error("Mensajes públicos:", error);
+    console.error(
+      "Mensajes públicos:",
+      error
+    );
   }
 }
 
+// ========================================
+// ANALIZAR / INICIAR DESCARGA
+// ========================================
+
 async function analyzeVideo() {
-  const url = document.getElementById("videoUrl").value.trim();
-  const button = document.getElementById("analyzeBtn");
-  const links = document.getElementById("downloadLinks");
+  const url = videoUrl.value.trim();
 
-  if (!settingsLoaded) {
-    showStatus("Verificando servicio","Espera un momento y vuelve a intentarlo.",0);
+  if (analyzeBtn.disabled) return;
+
+  if (
+    settingsLoaded &&
+    appSettings.maintenanceMode
+  ) {
+    showStatus(
+      "Estamos en mantenimiento",
+      "Las descargas están temporalmente deshabilitadas.",
+      0
+    );
+
     return;
   }
 
-  if (appSettings.maintenanceMode) {
-    showStatus("Estamos en mantenimiento","Las descargas están temporalmente deshabilitadas.",0);
-    return;
-  }
+  if (
+    settingsLoaded &&
+    !appSettings.freeMode &&
+    !token
+  ) {
+    showStatus(
+      "Necesitas una cuenta",
+      "Inicia sesión o crea una cuenta para descargar.",
+      0
+    );
 
-  if (!appSettings.freeMode && !token) {
-    showStatus("Necesitas una cuenta","Para descargar videos debes iniciar sesión o crear una cuenta.",0);
     openModal("login");
     return;
   }
 
   if (!url) {
-    showStatus("Falta el enlace","Pega primero el enlace del video.",0);
+    showStatus(
+      "Falta el enlace",
+      "Pega primero el enlace del video.",
+      0
+    );
+
     return;
   }
 
@@ -511,11 +1209,20 @@ async function analyzeVideo() {
 
   try {
     parsedUrl = new URL(url);
-    if (!["http:","https:"].includes(parsedUrl.protocol)) {
-      throw new Error("Dirección no permitida");
+
+    if (
+      !["http:", "https:"].includes(parsedUrl.protocol)
+    ) {
+      throw new Error("Dirección no permitida.");
     }
+
   } catch {
-    showStatus("Enlace inválido","Revisa que hayas copiado una dirección válida.",0);
+    showStatus(
+      "Enlace inválido",
+      "Revisa que hayas copiado una dirección válida.",
+      0
+    );
+
     return;
   }
 
@@ -524,121 +1231,418 @@ async function analyzeVideo() {
     pollingTimer = null;
   }
 
-  button.disabled = true;
-  links.replaceChildren();
+  analyzeBtn.disabled = true;
+  downloadLinks.replaceChildren();
 
   try {
-    await startDownload(parsedUrl.href,"Video");
+    await startDownload(parsedUrl.href);
+
   } catch (error) {
-    showStatus("No se pudo iniciar",error.message || "Ocurrió un error al procesar el video.",0);
+    showStatus(
+      "No se pudo iniciar",
+      error.message ||
+        "Ocurrió un error al procesar el video.",
+      0
+    );
+
   } finally {
     applyAppSettings();
   }
 }
 
-async function startDownload(url, platform) {
-  showStatus("Solicitando descarga...","Enviando el video al proveedor.",35);
+// ========================================
+// SOLICITAR DESCARGA AL BACKEND
+// ========================================
 
-  const headers = {"Content-Type":"application/json"};
+async function startDownload(url) {
+  showStatus(
+    "Solicitando descarga...",
+    "Enviando el video al proveedor.",
+    25
+  );
 
-  // Si existe sesión, enviamos el token al backend.
+  const headers = {
+    "Content-Type": "application/json"
+  };
+
   if (token) {
     headers.Authorization = "Bearer " + token;
   }
 
-  const response = await fetch(API + "/api/download", {
-    method:"POST",
-    headers,
-    body:JSON.stringify({url})
-  });
+  const response = await fetch(
+    API + "/api/download",
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ url })
+    }
+  );
 
   const data = await response.json();
 
   if (!response.ok) {
     if (response.status === 401) {
-      token = "";
-      currentUser = null;
-      localStorage.removeItem("vdp_token");
-      updateAccount();
-      applyAppSettings();
+      const loginRequired =
+        data.loginRequired === true;
+
+      if (!loginRequired) {
+        token = "";
+        currentUser = null;
+
+        localStorage.removeItem("vdp_token");
+
+        updateAccount();
+      }
+
+      if (loginRequired) {
+        openModal("login");
+      }
     }
 
-    throw new Error(data.error || "No se pudo iniciar la descarga.");
+    throw new Error(
+      data.error || "No se pudo iniciar la descarga."
+    );
   }
 
   if (!data.downloadId) {
-    throw new Error("El proveedor no devolvió un identificador.");
+    throw new Error(
+      "El proveedor no devolvió un identificador."
+    );
   }
 
-  showStatus("Procesando video","Tu video está siendo preparado. No cierres esta página.",50);
-  pollDownload(data.downloadId,url,platform);
+  showStatus(
+    "Procesando video",
+    "Tu video está siendo preparado. No cierres esta página.",
+    45
+  );
+
+  pollDownload(
+    data.downloadId,
+    url,
+    data.platform || "Video"
+  );
 }
 
-async function pollDownload(id,url,platform) {
+// ========================================
+// CONSULTAR PROCESAMIENTO
+// ========================================
+
+async function pollDownload(
+  id,
+  url,
+  platform
+) {
   try {
     const headers = {};
-    if (token) headers.Authorization = "Bearer " + token;
+
+    if (token) {
+      headers.Authorization = "Bearer " + token;
+    }
 
     const response = await fetch(
       API + "/api/download/" + encodeURIComponent(id),
-      {headers}
+      {
+        headers,
+        cache: "no-store"
+      }
     );
 
     const data = await response.json();
 
-    if (!response.ok) throw new Error(data.error || "Error consultando el estado.");
+    if (!response.ok) {
+      throw new Error(
+        data.error ||
+        "Error consultando el estado de la descarga."
+      );
+    }
 
-    const status = String(data.status || "").toLowerCase();
-    const files = Array.isArray(data.files) ? data.files : [];
+    const status = String(
+      data.status || ""
+    ).toLowerCase();
+
+    const files = Array.isArray(data.files)
+      ? data.files
+      : [];
 
     if (files.length) {
-      const container = document.getElementById("downloadLinks");
+      const availableFiles = files.filter(
+        file =>
+          file.available &&
+          file.downloadUrl
+      );
+
+      if (!availableFiles.length) {
+        showStatus(
+          "Procesamiento terminado",
+          "El proveedor todavía no ofrece archivos descargables.",
+          100
+        );
+
+        analyzeBtn.disabled = false;
+        return;
+      }
+
+      const container =
+        document.getElementById("downloadLinks");
+
       container.replaceChildren();
 
-      const firstFile = files.find(file => file.available && file.downloadUrl);
+      availableFiles.forEach((file, index) => {
+        const button = document.createElement("button");
 
-      if (!firstFile) {
-        showStatus("Procesamiento terminado","El proveedor todavía no ofrece archivos descargables.",100);
-      } else {
-        const link = document.createElement("a");
-        link.className = "download-link";
-        link.href = API + firstFile.downloadUrl;
-        link.textContent = "⬇ Descargar video";
-        link.rel = "noopener";
-        container.append(link);
+        button.type = "button";
+        button.className = "download-link";
 
-        showStatus("¡Video listo!","Tu video está preparado.",100);
-        saveHistory(url,platform || data.platform || "Video","Listo");
+        button.textContent =
+          "⬇ Descargar video" +
+          (availableFiles.length > 1
+            ? " " + (index + 1)
+            : "");
 
-        link.click();
-      }
+        button.addEventListener("click", () => {
+          downloadFile(file.downloadUrl, file.name, button);
+        });
+
+        container.append(button);
+      });
+
+      showStatus(
+        "¡Video listo!",
+        "Tu video está preparado. Pulsa el botón para descargarlo.",
+        100
+      );
+
+      saveHistory(
+        url,
+        platform || data.platform || "Video",
+        "Listo"
+      );
+
       return;
     }
 
-    if (status.includes("fail") || status.includes("error")) {
-      throw new Error(data.error || "El proveedor no pudo procesar el video.");
+    if (
+      status.includes("fail") ||
+      status.includes("error") ||
+      status.includes("cancel")
+    ) {
+      throw new Error(
+        data.error ||
+        "El proveedor no pudo procesar el video."
+      );
     }
 
-    showStatus("Procesando video","Estado: " + (data.status || "En espera") + ".",65);
-    pollingTimer = setTimeout(() => pollDownload(id,url,platform),3000);
+    showStatus(
+      "Procesando video",
+      "Estado: " + (data.status || "En espera") + ".",
+      65
+    );
+
+    pollingTimer = setTimeout(
+      () => pollDownload(id, url, platform),
+      3000
+    );
 
   } catch (error) {
-    showStatus("Error de descarga",error.message,0);
+    console.error("Polling:", error);
+
+    showStatus(
+      "Error de descarga",
+      error.message,
+      0
+    );
+
+    analyzeBtn.disabled = false;
   }
 }
 
-document.getElementById("videoUrl").addEventListener("keydown", event => {
-  if (event.key === "Enter") analyzeVideo();
-});
+// ========================================
+// DESCARGAR ARCHIVO CON TOKEN
+// ========================================
+
+async function downloadFile(
+  downloadUrl,
+  filename,
+  button
+) {
+  if (!downloadUrl) {
+    showStatus(
+      "Error",
+      "No se recibió la dirección del archivo.",
+      0
+    );
+
+    return;
+  }
+
+  const originalText = button.textContent;
+
+  button.disabled = true;
+  button.textContent = "Preparando descarga...";
+
+  try {
+    // Solo aceptamos rutas de nuestro propio backend.
+    const fileUrl = new URL(downloadUrl, API);
+
+    if (fileUrl.origin !== new URL(API).origin) {
+      throw new Error(
+        "La dirección de descarga no es válida."
+      );
+    }
+
+    const headers = {};
+
+    if (token) {
+      headers.Authorization = "Bearer " + token;
+    }
+
+    const response = await fetch(
+      fileUrl.href,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store"
+      }
+    );
+
+    if (!response.ok) {
+      let errorMessage =
+        "No se pudo descargar el archivo.";
+
+      try {
+        const data = await response.json();
+
+        errorMessage =
+          data.error || errorMessage;
+
+      } catch {
+        // Respuesta sin JSON.
+      }
+
+      if (response.status === 401) {
+        showStatus(
+          "Acceso denegado",
+          errorMessage +
+            " Comprueba tu sesión o inicia sesión nuevamente.",
+          0
+        );
+
+        if (
+          !appSettings.freeMode ||
+          !token
+        ) {
+          openModal("login");
+        }
+
+      } else {
+        showStatus(
+          "Error de descarga",
+          errorMessage,
+          0
+        );
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const blob = await response.blob();
+
+    if (!blob.size) {
+      throw new Error(
+        "El archivo recibido está vacío."
+      );
+    }
+
+    const objectUrl = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+
+    link.href = objectUrl;
+    link.download = safeFilename(
+      filename || "video.mp4"
+    );
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    setTimeout(() => {
+      URL.revokeObjectURL(objectUrl);
+    }, 60000);
+
+    showStatus(
+      "¡Descarga iniciada!",
+      "El archivo se ha preparado correctamente.",
+      100
+    );
+
+  } catch (error) {
+    console.error(
+      "Descarga del archivo:",
+      error
+    );
+
+    showStatus(
+      "No se pudo descargar",
+      error.message,
+      0
+    );
+
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+// ========================================
+// LIMPIAR NOMBRE DE ARCHIVO
+// ========================================
+
+function safeFilename(name) {
+  return String(name || "video.mp4")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/[\r\n]/g, "")
+    .trim()
+    .slice(0, 150) || "video.mp4";
+}
+
+// ========================================
+// EVENTOS
+// ========================================
+
+videoUrl.addEventListener(
+  "keydown",
+  event => {
+    if (event.key === "Enter") {
+      analyzeVideo();
+    }
+  }
+);
+
+// ========================================
+// INICIAR APLICACIÓN
+// ========================================
+
+renderHistory();
+updateAccount();
 
 checkSession();
-renderHistory();
 loadPublicSettings();
 loadPublicMessages();
 
-// Actualizar los ajustes cada 30 segundos y los mensajes cada minuto.
-setInterval(loadPublicSettings,30000);
-setInterval(loadPublicMessages,60000);
+// Actualizar configuración cada 30 segundos.
+setInterval(
+  loadPublicSettings,
+  30000
+);
+
+// Actualizar mensajes cada minuto.
+setInterval(
+  loadPublicMessages,
+  60000
+);
+
 </script>
+
 </body>
 </html>
