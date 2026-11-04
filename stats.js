@@ -1,4 +1,3 @@
-
 import { Router } from "express";
 import { timingSafeEqual } from "node:crypto";
 import { pool } from "./db.js";
@@ -9,17 +8,30 @@ let tablesReady;
 
 async function ensureTables() {
   if (!tablesReady) {
-    tablesReady = pool.query(`
-      CREATE TABLE IF NOT EXISTS app_settings (
-        setting_key VARCHAR(50) PRIMARY KEY,
-        setting_value BOOLEAN NOT NULL DEFAULT FALSE,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
+    tablesReady = (async () => {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS app_settings (
+          setting_key VARCHAR(50) PRIMARY KEY,
+          setting_value BOOLEAN NOT NULL DEFAULT FALSE,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
 
-      INSERT INTO app_settings (setting_key, setting_value)
-      VALUES ('free_mode', TRUE), ('maintenance_mode', FALSE)
-      ON CONFLICT (setting_key) DO NOTHING;
-    `).catch(error => {
+        INSERT INTO app_settings (setting_key, setting_value)
+        VALUES ('free_mode', TRUE), ('maintenance_mode', FALSE)
+        ON CONFLICT (setting_key) DO NOTHING;
+
+        CREATE TABLE IF NOT EXISTS app_messages (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(120) NOT NULL,
+          message TEXT NOT NULL,
+          type VARCHAR(20) NOT NULL DEFAULT 'normal',
+          display VARCHAR(20) NOT NULL DEFAULT 'popup',
+          active BOOLEAN NOT NULL DEFAULT TRUE,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `);
+    })().catch(error => {
       tablesReady = null;
       throw error;
     });
@@ -50,6 +62,35 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function validateMessage(data) {
+  const { title, message, type, display, active } = data || {};
+
+  if (
+    typeof title !== "string" ||
+    !title.trim() ||
+    title.trim().length > 120 ||
+    typeof message !== "string" ||
+    !message.trim() ||
+    message.trim().length > 5000
+  ) {
+    return "Escribe un título y un mensaje válido.";
+  }
+
+  if (!["normal", "importante", "urgente"].includes(type)) {
+    return "Tipo de mensaje inválido.";
+  }
+
+  if (!["popup", "bar"].includes(display)) {
+    return "Forma de mostrar el mensaje inválida.";
+  }
+
+  if (active !== undefined && typeof active !== "boolean") {
+    return "Estado del mensaje inválido.";
+  }
+
+  return null;
+}
+
 // Estadísticas públicas
 router.get("/", async (_req, res) => {
   try {
@@ -65,6 +106,30 @@ router.get("/", async (_req, res) => {
   } catch {
     res.status(503).json({
       error: "Estadísticas no disponibles."
+    });
+  }
+});
+
+// Mensajes activos para el sitio público
+router.get("/messages", async (_req, res) => {
+  try {
+    await ensureTables();
+
+    const result = await pool.query(`
+      SELECT id, title, message, type, display, created_at
+      FROM app_messages
+      WHERE active = TRUE
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      ok: true,
+      messages: result.rows
+    });
+  } catch (error) {
+    console.error("Public messages:", error.message);
+    res.status(503).json({
+      error: "No se pudieron cargar los mensajes."
     });
   }
 });
@@ -120,11 +185,7 @@ router.get("/admin", requireAdmin, async (_req, res) => {
 router.get("/admin/users", requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`
-      SELECT
-        id,
-        username,
-        is_blocked,
-        created_at
+      SELECT id, username, is_blocked, created_at
       FROM users
       ORDER BY created_at DESC
       LIMIT 500
@@ -243,6 +304,183 @@ router.put("/admin/settings", requireAdmin, async (req, res) => {
     console.error("Admin settings save:", error.message);
     res.status(500).json({
       error: "No se pudo guardar la configuración."
+    });
+  }
+});
+
+// ADMIN: consultar todos los mensajes
+router.get("/admin/messages", requireAdmin, async (_req, res) => {
+  try {
+    await ensureTables();
+
+    const result = await pool.query(`
+      SELECT *
+      FROM app_messages
+      ORDER BY created_at DESC
+    `);
+
+    res.json({
+      ok: true,
+      messages: result.rows
+    });
+  } catch (error) {
+    console.error("Admin messages:", error.message);
+    res.status(500).json({
+      error: "No se pudieron consultar los mensajes."
+    });
+  }
+});
+
+// ADMIN: publicar mensaje
+router.post("/admin/messages", requireAdmin, async (req, res) => {
+  try {
+    await ensureTables();
+
+    const data = {
+      ...req.body,
+      type: req.body?.type ?? "normal",
+      display: req.body?.display ?? "popup",
+      active: req.body?.active ?? true
+    };
+
+    const validationError = validateMessage(data);
+
+    if (validationError) {
+      return res.status(400).json({
+        error: validationError
+      });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO app_messages
+        (title, message, type, display, active)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [
+      data.title.trim(),
+      data.message.trim(),
+      data.type,
+      data.display,
+      data.active
+    ]);
+
+    res.status(201).json({
+      ok: true,
+      message: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Create message:", error.message);
+    res.status(500).json({
+      error: "No se pudo publicar el mensaje."
+    });
+  }
+});
+
+// ADMIN: editar o activar/desactivar mensaje
+router.patch("/admin/messages/:id", requireAdmin, async (req, res) => {
+  try {
+    await ensureTables();
+
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({
+        error: "ID inválido."
+      });
+    }
+
+    const current = await pool.query(
+      "SELECT * FROM app_messages WHERE id = $1",
+      [id]
+    );
+
+    if (!current.rows.length) {
+      return res.status(404).json({
+        error: "Mensaje no encontrado."
+      });
+    }
+
+    const old = current.rows[0];
+    const data = {
+      title: req.body?.title ?? old.title,
+      message: req.body?.message ?? old.message,
+      type: req.body?.type ?? old.type,
+      display: req.body?.display ?? old.display,
+      active: req.body?.active ?? old.active
+    };
+
+    const validationError = validateMessage(data);
+
+    if (validationError) {
+      return res.status(400).json({
+        error: validationError
+      });
+    }
+
+    const result = await pool.query(`
+      UPDATE app_messages
+      SET
+        title = $1,
+        message = $2,
+        type = $3,
+        display = $4,
+        active = $5,
+        updated_at = NOW()
+      WHERE id = $6
+      RETURNING *
+    `, [
+      data.title.trim(),
+      data.message.trim(),
+      data.type,
+      data.display,
+      data.active,
+      id
+    ]);
+
+    res.json({
+      ok: true,
+      message: result.rows[0]
+    });
+  } catch (error) {
+    console.error("Update message:", error.message);
+    res.status(500).json({
+      error: "No se pudo actualizar el mensaje."
+    });
+  }
+});
+
+// ADMIN: eliminar mensaje
+router.delete("/admin/messages/:id", requireAdmin, async (req, res) => {
+  try {
+    await ensureTables();
+
+    const id = Number(req.params.id);
+
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({
+        error: "ID inválido."
+      });
+    }
+
+    const result = await pool.query(
+      "DELETE FROM app_messages WHERE id = $1 RETURNING id",
+      [id]
+    );
+
+    if (!result.rows.length) {
+      return res.status(404).json({
+        error: "Mensaje no encontrado."
+      });
+    }
+
+    res.json({
+      ok: true,
+      message: "Mensaje eliminado."
+    });
+  } catch (error) {
+    console.error("Delete message:", error.message);
+    res.status(500).json({
+      error: "No se pudo eliminar el mensaje."
     });
   }
 });
