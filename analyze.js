@@ -1,5 +1,5 @@
 import {Router} from "express";
-import {validateVideoUrl} from "../services/platforms.js";
+import {validateVideoUrl} from "./platforms.js";
 const router=Router();
 router.post("/",(req,res)=>{
  const result=validateVideoUrl(req.body?.url);
