@@ -15,7 +15,9 @@ function getApiKey() {
 async function knightvision(path, options = {}) {
   const key = getApiKey();
 
-  if (!key) throw new Error("Falta configurar KNIGHTVISION_API_KEY.");
+  if (!key) {
+    throw new Error("Falta configurar KNIGHTVISION_API_KEY.");
+  }
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
@@ -28,7 +30,9 @@ async function knightvision(path, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || `Knightvision respondió ${response.status}`);
+    throw new Error(
+      error.error || `Knightvision respondió ${response.status}`
+    );
   }
 
   return response;
@@ -88,7 +92,7 @@ router.get("/:id", async (req, res) => {
         kind: file.kind,
         name: file.download_name,
         available: file.available,
-        downloadUrl: `/api/download/${encodeURIComponent(id)}/file/${file.idx}`
+        downloadUrl: `/api/download/${encodeURIComponent(id)}/file/${file.idx}?download=1`
       }))
     });
   } catch (error) {
@@ -96,7 +100,7 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// Entregar archivo y registrar descarga terminada
+// Entregar archivo como descarga
 router.get("/:id/file/:idx", async (req, res) => {
   try {
     const { id, idx } = req.params;
@@ -105,36 +109,69 @@ router.get("/:id/file/:idx", async (req, res) => {
       return res.status(400).json({ error: "Archivo inválido." });
     }
 
-    const suffix = req.query.download === "1" ? "?download=1" : "";
-
+    // Solicitar siempre el archivo en modo descarga.
     const response = await knightvision(
-      `/social-download/${encodeURIComponent(id)}/file/${idx}${suffix}`
+      `/social-download/${encodeURIComponent(id)}/file/${idx}?download=1`
     );
 
     if (!response.body) {
       return res.status(502).json({ error: "Archivo vacío." });
     }
 
-    res.setHeader(
-      "Content-Type",
-      response.headers.get("content-type") || "video/mp4"
-    );
+    const contentType =
+      response.headers.get("content-type") || "video/mp4";
 
-    const disposition = response.headers.get("content-disposition");
-    if (disposition) res.setHeader("Content-Disposition", disposition);
+    // Obtener nombre del archivo enviado por el proveedor.
+    const disposition =
+      response.headers.get("content-disposition") || "";
+
+    let filename = "video.mp4";
+
+    const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const normalMatch = disposition.match(/filename="?([^";]+)"?/i);
+
+    if (utf8Match) {
+      try {
+        filename = decodeURIComponent(utf8Match[1]);
+      } catch {
+        filename = "video.mp4";
+      }
+    } else if (normalMatch) {
+      filename = normalMatch[1];
+    }
+
+    // Evitar caracteres peligrosos en el nombre.
+    filename = filename
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .replace(/[\r\n]/g, "")
+      .trim()
+      .slice(0, 150);
+
+    if (!filename) filename = "video.mp4";
+
+    // Forzar descarga en lugar de reproducción.
+    res.setHeader("Content-Type", contentType);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
 
     const length = response.headers.get("content-length");
-    if (length) res.setHeader("Content-Length", length);
+    if (length) {
+      res.setHeader("Content-Length", length);
+    }
 
     await pipeline(Readable.fromWeb(response.body), res);
 
-    // Solo se registra si el envío terminó correctamente.
+    // Registrar descarga completada.
     try {
       const statusResponse = await knightvision(
         `/social-download/${encodeURIComponent(id)}`
       );
-      const data = await statusResponse.json();
 
+      const data = await statusResponse.json();
       const platform = String(data.platform || "unknown").toLowerCase();
 
       await pool.query(
@@ -142,10 +179,14 @@ router.get("/:id/file/:idx", async (req, res) => {
         [platform]
       );
     } catch (dbError) {
-      console.error("No se pudo registrar la descarga:", dbError.message);
+      console.error(
+        "No se pudo registrar la descarga:",
+        dbError.message
+      );
     }
-
   } catch (error) {
+    console.error("Error entregando archivo:", error.message);
+
     if (!res.headersSent) {
       res.status(502).json({ error: error.message });
     } else {
