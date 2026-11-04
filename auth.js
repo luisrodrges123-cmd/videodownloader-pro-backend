@@ -76,15 +76,7 @@ export async function optionalAuth(req, res, next) {
 
 // Exigir que el usuario tenga sesión
 export function requiredAuth(req, res, next) {
-  optionalAuth(req, res, () => {
-    if (!req.user) {
-      return res.status(401).json({
-        error: "Debes iniciar sesión"
-      });
-    }
-    next();
-  });
-}
+  
 
 // Registro
 router.post("/register", async (req, res) => {
