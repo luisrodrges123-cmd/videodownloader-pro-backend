@@ -1,0 +1,17 @@
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import {rateLimit} from "express-rate-limit";
+import analyze from "./routes/analyze.js";
+import download from "./routes/download.js";
+import {notFound,errorHandler} from "./middleware/errors.js";
+const app=express(),port=Number(process.env.PORT||3000);
+const origins=(process.env.ALLOWED_ORIGINS||"*").split(",").map(x=>x.trim());
+app.disable("x-powered-by");app.use(helmet());
+app.use(cors({origin(origin,cb){if(!origin||origins.includes("*")||origins.includes(origin))return cb(null,true);return cb(new Error("Origen no permitido por CORS."));}}));
+app.use(express.json({limit:"10kb"}));
+app.use("/api",rateLimit({windowMs:60000,limit:30,standardHeaders:"draft-7",legacyHeaders:false,message:{error:"Demasiadas solicitudes. Intenta más tarde."}}));
+app.get("/",(_req,res)=>res.json({name:"VideoDownloader Pro API",status:"online"}));
+app.get("/api/health",(_req,res)=>res.json({ok:true,service:"VideoDownloader Pro API"}));
+app.use("/api/analyze",analyze);app.use("/api/download",download);app.use(notFound);app.use(errorHandler);
+app.listen(port,"0.0.0.0",()=>console.log("API listening on "+port));
