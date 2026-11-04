@@ -104,7 +104,7 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
   <label class="label" for="videoUrl">Pega aquí el enlace del video</label>
   <div class="urlrow">
     <input id="videoUrl" type="url" placeholder="https://..." autocomplete="url">
-    <button class="btn primary" id="analyzeBtn" onclick="analyzeVideo()">PEGAR ENLACE</button>
+    <button class="btn primary" id="analyzeBtn" onclick="analyzeVideo()">DESCARGAR VIDEO</button>
   </div>
 
   <div class="platforms">
@@ -151,7 +151,7 @@ footer{text-align:center;color:#71809d;font-size:12px;margin-top:45px}
         <label>Contraseña</label>
         <input id="password" type="password" minlength="8" maxlength="72" required autocomplete="current-password" placeholder="Mínimo 8 caracteres">
       </div>
-      <button class="btn primary wide" id="authSubmit">Continuar</button>
+      <button class="btn primary wide" id="authSubmit" type="submit">Continuar</button>
     </form>
     <button class="btn wide" onclick="switchAuth()" id="switchButton">Crear una cuenta</button>
     <div class="message" id="authMessage"></div>
@@ -216,6 +216,7 @@ async function submitAuth(event) {
     const data = await response.json();
 
     if (!response.ok) throw new Error(data.error || "No se pudo completar la operación.");
+    if (!data.token || !data.user) throw new Error("El servidor no devolvió los datos de sesión.");
 
     token = data.token;
     currentUser = data.user;
@@ -339,38 +340,30 @@ async function analyzeVideo() {
     return;
   }
 
+  let parsedUrl;
+
   try {
-    new URL(url);
+    parsedUrl = new URL(url);
+    if (!["http:","https:"].includes(parsedUrl.protocol)) {
+      throw new Error("Dirección no permitida");
+    }
   } catch {
     showStatus("Enlace inválido","Revisa que hayas copiado una dirección válida.",0);
     return;
   }
 
-  if (pollingTimer) clearTimeout(pollingTimer);
+  if (pollingTimer) {
+    clearTimeout(pollingTimer);
+    pollingTimer = null;
+  }
+
   button.disabled = true;
   links.replaceChildren();
-  showStatus("Revisando enlace...","Conectando con VideoDownloader Pro.",20);
 
   try {
-    const response = await fetch(API + "/api/analyze", {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({url})
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) throw new Error(data.error || "No se pudo revisar el enlace.");
-
-    if (!data.downloadAvailable) {
-      showStatus("Enlace detectado","La plataforma fue identificada (" + data.platform + "), pero el análisis indica que la descarga no está disponible.",30);
-      saveHistory(url,data.platform || "Desconocida","Enlace revisado");
-      return;
-    }
-
-    await startDownload(url,data.platform);
+    await startDownload(parsedUrl.href,"Video");
   } catch (error) {
-    showStatus("No se pudo revisar",error.message,0);
+    showStatus("No se pudo iniciar",error.message || "Ocurrió un error al procesar el video.",0);
   } finally {
     button.disabled = false;
   }
@@ -388,7 +381,6 @@ async function startDownload(url, platform) {
   const data = await response.json();
 
   if (!response.ok) throw new Error(data.error || "No se pudo iniciar la descarga.");
-
   if (!data.downloadId) throw new Error("El proveedor no devolvió un identificador.");
 
   showStatus("Procesando video","Tu video está siendo preparado. No cierres esta página.",50);
@@ -403,11 +395,9 @@ async function pollDownload(id,url,platform) {
     if (!response.ok) throw new Error(data.error || "Error consultando el estado.");
 
     const status = String(data.status || "").toLowerCase();
-    const files = data.files || [];
+    const files = Array.isArray(data.files) ? data.files : [];
 
     if (files.length) {
-      showStatus("¡Video listo!","Selecciona el archivo para descargar.",100);
-
       const container = document.getElementById("downloadLinks");
       container.replaceChildren();
 
@@ -424,6 +414,7 @@ async function pollDownload(id,url,platform) {
       if (!container.children.length) {
         showStatus("Procesamiento terminado","El proveedor todavía no ofrece archivos descargables.",100);
       } else {
+        showStatus("¡Video listo!","Selecciona el archivo para descargar.",100);
         saveHistory(url,platform || data.platform || "Video","Listo");
       }
       return;
