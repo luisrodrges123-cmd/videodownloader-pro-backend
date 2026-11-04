@@ -6,6 +6,7 @@ import { rateLimit } from "express-rate-limit";
 import analyze from "./analyze.js";
 import download from "./download.js";
 import stats from "./stats.js";
+import auth, { initAuthDb } from "./auth.js";
 import { initDb } from "./db.js";
 import { notFound, errorHandler } from "./errors.js";
 
@@ -46,6 +47,7 @@ app.get("/api/health", (_req, res) =>
   res.json({ ok: true, service: "VideoDownloader Pro API" })
 );
 
+app.use("/api/auth", auth);
 app.use("/api/analyze", analyze);
 app.use("/api/download", download);
 app.use("/api/stats", stats);
@@ -53,15 +55,20 @@ app.use("/api/stats", stats);
 app.use(notFound);
 app.use(errorHandler);
 
-initDb()
-  .then(() => {
-    console.log("PostgreSQL conectado.");
-  })
-  .catch(error => {
-    console.error("Error conectando PostgreSQL:", error.message);
-  })
-  .finally(() => {
-    app.listen(port, "0.0.0.0", () =>
-      console.log("API listening on " + port)
-    );
-  });
+async function startServer() {
+  try {
+    await initDb();
+    await initAuthDb();
+
+    console.log("PostgreSQL conectado y tablas listas.");
+
+    app.listen(port, "0.0.0.0", () => {
+      console.log("API listening on " + port);
+    });
+  } catch (error) {
+    console.error("Error iniciando el servidor:", error);
+    process.exit(1);
+  }
+}
+
+startServer();
