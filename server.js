@@ -1,17 +1,67 @@
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import {rateLimit} from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import analyze from "./analyze.js";
 import download from "./download.js";
-import {notFound,errorHandler} from "./errors.js";
-const app=express(),port=Number(process.env.PORT||3000);
-const origins=(process.env.ALLOWED_ORIGINS||"*").split(",").map(x=>x.trim());
-app.disable("x-powered-by");app.use(helmet());
-app.use(cors({origin(origin,cb){if(!origin||origins.includes("*")||origins.includes(origin))return cb(null,true);return cb(new Error("Origen no permitido por CORS."));}}));
-app.use(express.json({limit:"10kb"}));
-app.use("/api",rateLimit({windowMs:60000,limit:30,standardHeaders:"draft-7",legacyHeaders:false,message:{error:"Demasiadas solicitudes. Intenta más tarde."}}));
-app.get("/",(_req,res)=>res.json({name:"VideoDownloader Pro API",status:"online"}));
-app.get("/api/health",(_req,res)=>res.json({ok:true,service:"VideoDownloader Pro API"}));
-app.use("/api/analyze",analyze);app.use("/api/download",download);app.use(notFound);app.use(errorHandler);
-app.listen(port,"0.0.0.0",()=>console.log("API listening on "+port));
+import stats from "./stats.js";
+import { initDb } from "./db.js";
+import { notFound, errorHandler } from "./errors.js";
+
+const app = express();
+const port = Number(process.env.PORT || 3000);
+
+const origins = (process.env.ALLOWED_ORIGINS || "*")
+  .split(",")
+  .map(x => x.trim());
+
+app.disable("x-powered-by");
+app.use(helmet());
+
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin || origins.includes("*") || origins.includes(origin)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Origen no permitido por CORS."));
+  }
+}));
+
+app.use(express.json({ limit: "10kb" }));
+
+app.use("/api", rateLimit({
+  windowMs: 60000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Demasiadas solicitudes. Intenta más tarde." }
+}));
+
+app.get("/", (_req, res) =>
+  res.json({ name: "VideoDownloader Pro API", status: "online" })
+);
+
+app.get("/api/health", (_req, res) =>
+  res.json({ ok: true, service: "VideoDownloader Pro API" })
+);
+
+app.use("/api/analyze", analyze);
+app.use("/api/download", download);
+app.use("/api/stats", stats);
+
+app.use(notFound);
+app.use(errorHandler);
+
+initDb()
+  .then(() => {
+    console.log("PostgreSQL conectado.");
+  })
+  .catch(error => {
+    console.error("Error conectando PostgreSQL:", error.message);
+  })
+  .finally(() => {
+    app.listen(port, "0.0.0.0", () =>
+      console.log("API listening on " + port)
+    );
+  });
