@@ -14,6 +14,46 @@ function getApiKey() {
 }
 
 // ========================================
+// CONFIGURACIÓN DE LA APLICACIÓN
+// ========================================
+
+async function getAppSettings() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      setting_key VARCHAR(50) PRIMARY KEY,
+      setting_value BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await pool.query(`
+    INSERT INTO app_settings (setting_key, setting_value)
+    VALUES
+      ('free_mode', TRUE),
+      ('maintenance_mode', FALSE)
+    ON CONFLICT (setting_key) DO NOTHING
+  `);
+
+  const result = await pool.query(`
+    SELECT setting_key, setting_value
+    FROM app_settings
+    WHERE setting_key IN ('free_mode', 'maintenance_mode')
+  `);
+
+  const settings = Object.fromEntries(
+    result.rows.map(row => [
+      row.setting_key,
+      row.setting_value
+    ])
+  );
+
+  return {
+    freeMode: settings.free_mode ?? true,
+    maintenanceMode: settings.maintenance_mode ?? false
+  };
+}
+
+// ========================================
 // AUTENTICACIÓN
 // ========================================
 
@@ -46,7 +86,10 @@ async function getAuthenticatedUser(req) {
       [decoded.id]
     );
 
-    if (!result.rows.length || result.rows[0].is_blocked) {
+    if (
+      !result.rows.length ||
+      result.rows[0].is_blocked
+    ) {
       return { error: "Cuenta no disponible." };
     }
 
@@ -56,6 +99,7 @@ async function getAuthenticatedUser(req) {
         username: result.rows[0].username
       }
     };
+
   } catch (error) {
     if (
       error.name === "JsonWebTokenError" ||
@@ -70,31 +114,7 @@ async function getAuthenticatedUser(req) {
 }
 
 // ========================================
-// CONFIGURACIÓN DE LA APLICACIÓN
-// ========================================
-
-async function getAppSettings() {
-  const result = await pool.query(`
-    SELECT setting_key, setting_value
-    FROM app_settings
-    WHERE setting_key IN ('free_mode', 'maintenance_mode')
-  `);
-
-  const settings = Object.fromEntries(
-    result.rows.map(row => [
-      row.setting_key,
-      row.setting_value
-    ])
-  );
-
-  return {
-    freeMode: settings.free_mode ?? true,
-    maintenanceMode: settings.maintenance_mode ?? false
-  };
-}
-
-// ========================================
-// COMPROBAR PERMISOS DE DESCARGA
+// COMPROBAR PERMISOS
 // ========================================
 
 async function checkDownloadAccess(req, res) {
@@ -103,6 +123,7 @@ async function checkDownloadAccess(req, res) {
 
     if (settings.maintenanceMode) {
       res.status(503).json({
+        ok: false,
         error: "Estamos en mantenimiento. Intenta más tarde.",
         maintenanceMode: true
       });
@@ -114,6 +135,7 @@ async function checkDownloadAccess(req, res) {
 
     if (auth.error) {
       res.status(401).json({
+        ok: false,
         error: auth.error
       });
 
@@ -122,6 +144,7 @@ async function checkDownloadAccess(req, res) {
 
     if (!settings.freeMode && !auth.user) {
       res.status(401).json({
+        ok: false,
         error: "Debes iniciar sesión para descargar videos.",
         loginRequired: true
       });
@@ -132,10 +155,15 @@ async function checkDownloadAccess(req, res) {
     req.user = auth.user;
 
     return true;
+
   } catch (error) {
-    console.error("Download access:", error.message);
+    console.error(
+      "Download access:",
+      error.stack || error.message
+    );
 
     res.status(503).json({
+      ok: false,
       error: "No se pudieron verificar los permisos de descarga."
     });
 
@@ -144,32 +172,39 @@ async function checkDownloadAccess(req, res) {
 }
 
 // ========================================
-// API DE KNIGHTVISION
+// API KNIGHTVISION
 // ========================================
 
 async function knightvision(path, options = {}) {
   const key = getApiKey();
 
   if (!key) {
-    throw new Error("Falta configurar KNIGHTVISION_API_KEY.");
+    throw new Error(
+      "Falta configurar KNIGHTVISION_API_KEY en Render."
+    );
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${key}`,
-      ...(options.body
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...options.headers
+  const response = await fetch(
+    `${API_BASE}${path}`,
+    {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${key}`,
+        ...(options.body
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...options.headers
+      }
     }
-  });
+  );
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
 
     throw new Error(
-      error.error || `Knightvision respondió ${response.status}`
+      error.error ||
+      error.message ||
+      `Knightvision respondió ${response.status}`
     );
   }
 
@@ -191,20 +226,31 @@ router.post("/", async (req, res) => {
 
     if (!result.valid) {
       return res.status(400).json({
+        ok: false,
         error: result.reason
       });
     }
 
-    const response = await knightvision("/social-download", {
-      method: "POST",
-      body: JSON.stringify({
-        url: req.body.url
-      })
-    });
+    const response = await knightvision(
+      "/social-download",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          url: req.body.url
+        })
+      }
+    );
 
     const data = await response.json();
 
-    res.status(202).json({
+    if (!data.download_id) {
+      return res.status(502).json({
+        ok: false,
+        error: "Knightvision no devolvió un ID de descarga."
+      });
+    }
+
+    return res.status(202).json({
       ok: true,
       downloadId: data.download_id,
       status: data.status,
@@ -213,9 +259,13 @@ router.post("/", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Start download:", error.message);
+    console.error(
+      "Start download:",
+      error.stack || error.message
+    );
 
-    res.status(502).json({
+    return res.status(502).json({
+      ok: false,
       error: error.message
     });
   }
@@ -236,7 +286,8 @@ router.get("/:id", async (req, res) => {
 
     if (!/^kv-[a-zA-Z0-9-]+$/.test(id)) {
       return res.status(400).json({
-        error: "ID inválido."
+        ok: false,
+        error: "ID de descarga inválido."
       });
     }
 
@@ -246,7 +297,7 @@ router.get("/:id", async (req, res) => {
 
     const data = await response.json();
 
-    res.json({
+    return res.json({
       ok: true,
       downloadId: data.download_id,
       status: data.status,
@@ -263,9 +314,13 @@ router.get("/:id", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Download status:", error.message);
+    console.error(
+      "Download status:",
+      error.stack || error.message
+    );
 
-    res.status(502).json({
+    return res.status(502).json({
+      ok: false,
       error: error.message
     });
   }
@@ -289,6 +344,7 @@ router.get("/:id/file/:idx", async (req, res) => {
       !/^\d+$/.test(idx)
     ) {
       return res.status(400).json({
+        ok: false,
         error: "Archivo inválido."
       });
     }
@@ -299,12 +355,14 @@ router.get("/:id/file/:idx", async (req, res) => {
 
     if (!response.body) {
       return res.status(502).json({
-        error: "Archivo vacío."
+        ok: false,
+        error: "Knightvision devolvió un archivo vacío."
       });
     }
 
     const contentType =
-      response.headers.get("content-type") || "video/mp4";
+      response.headers.get("content-type") ||
+      "application/octet-stream";
 
     const disposition =
       response.headers.get("content-disposition") || "";
@@ -391,11 +449,12 @@ router.get("/:id/file/:idx", async (req, res) => {
   } catch (error) {
     console.error(
       "Error entregando archivo:",
-      error.message
+      error.stack || error.message
     );
 
     if (!res.headersSent) {
       res.status(502).json({
+        ok: false,
         error: error.message
       });
     } else {
