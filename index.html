@@ -401,21 +401,23 @@ async function pollDownload(id,url,platform) {
       const container = document.getElementById("downloadLinks");
       container.replaceChildren();
 
-      files.filter(file => file.available && file.downloadUrl).forEach((file,index) => {
-        const link = document.createElement("a");
-        link.className = "download-link";
-        link.href = API + file.downloadUrl;
-        link.textContent = "⬇ Descargar archivo " + (index + 1);
-        link.target = "_blank";
-        link.rel = "noopener";
-        container.append(link);
-      });
+      const firstFile = files.find(file => file.available && file.downloadUrl);
 
-      if (!container.children.length) {
+      if (!firstFile) {
         showStatus("Procesamiento terminado","El proveedor todavía no ofrece archivos descargables.",100);
       } else {
-        showStatus("¡Video listo!","Selecciona el archivo para descargar.",100);
+        const link = document.createElement("a");
+        link.className = "download-link";
+        link.href = API + firstFile.downloadUrl;
+        link.textContent = "⬇ Descargar video";
+        link.rel = "noopener";
+        container.append(link);
+
+        showStatus("¡Video listo!","Iniciando la descarga automáticamente...",100);
         saveHistory(url,platform || data.platform || "Video","Listo");
+
+        // Descarga automáticamente el primer archivo disponible.
+        link.click();
       }
       return;
     }
