@@ -28,7 +28,7 @@ function verifyWebhook(req) {
   const secret = process.env.MP_WEBHOOK_SECRET;
   const signature = req.get("x-signature") || "";
   const requestId = req.get("x-request-id") || "";
-  const dataId = String(req.query["data.id"] || req.query.id || "").toLowerCase();
+  const dataId = String(req.query["data.id"] || req.query.id || req.body?.data?.id || "").toLowerCase();
   if (!secret || !signature || !requestId || !dataId) return false;
 
   const parts = Object.fromEntries(signature.split(",").map(p => {
@@ -89,18 +89,49 @@ router.post("/subscribe", requiredAuth, async (req, res) => {
 
 router.get("/status", requiredAuth, async (req, res) => {
   try {
+    // Consultar Mercado Pago al volver del checkout y al abrir la cuenta.
+    // Así no dependemos exclusivamente del tiempo de entrega del webhook.
     const result = await pool.query(`
-      SELECT free_downloads_used, payer_email, subscription_status, subscription_expires_at
+      SELECT free_downloads_used, payer_email, mp_subscription_id,
+             subscription_status, subscription_expires_at
       FROM users WHERE id=$1
     `, [req.user.id]);
     const u = result.rows[0];
-    const active = u.subscription_status === "authorized" &&
-      (!u.subscription_expires_at || new Date(u.subscription_expires_at) > new Date());
+    if (!u) return res.status(404).json({ ok:false, error:"Cuenta no encontrada." });
+
+    let status = u.subscription_status || "none";
+    let expiresAt = u.subscription_expires_at;
+    if (u.mp_subscription_id && process.env.MP_ACCESS_TOKEN) {
+      try {
+        const sub = await mpRequest(`/preapproval/${encodeURIComponent(u.mp_subscription_id)}`);
+        const expectedReference = `vdp_user_${req.user.id}`;
+        const correctPlan = sub.external_reference === expectedReference &&
+          Number(sub.auto_recurring?.transaction_amount) === PRICE &&
+          sub.auto_recurring?.currency_id === CURRENCY &&
+          Number(sub.auto_recurring?.frequency) === 1 &&
+          sub.auto_recurring?.frequency_type === "months";
+        if (correctPlan) {
+          status = String(sub.status || "pending").toLowerCase();
+          expiresAt = sub.next_payment_date ? new Date(sub.next_payment_date) : null;
+          await pool.query(`
+            UPDATE users SET subscription_status=$1, subscription_expires_at=$2,
+              payer_email=COALESCE($3,payer_email)
+            WHERE id=$4 AND mp_subscription_id=$5
+          `, [status, expiresAt, sub.payer_email || null, req.user.id, String(sub.id)]);
+        }
+      } catch (syncError) {
+        // Si Mercado Pago no responde, mostrar el último estado confirmado localmente.
+        console.error("No se pudo sincronizar Mercado Pago:", syncError.message);
+      }
+    }
+
+    const active = status === "authorized" &&
+      (!expiresAt || new Date(expiresAt) > new Date());
     return res.json({
       ok:true, freeDownloadsUsed:u.free_downloads_used,
       freeDownloadsRemaining:active ? null : Math.max(0,5-u.free_downloads_used),
-      subscriptionActive:active, subscriptionStatus:u.subscription_status,
-      subscriptionExpiresAt:u.subscription_expires_at, price:PRICE, currency:CURRENCY
+      subscriptionActive:active, subscriptionStatus:status,
+      subscriptionExpiresAt:expiresAt, price:PRICE, currency:CURRENCY
     });
   } catch (error) {
     console.error("Subscription status:", error.message);
