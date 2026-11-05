@@ -203,6 +203,39 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
   }
 });
 
+// ADMIN: consultar suscripciones y usuarios con su estado de pago
+router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, username, payer_email, mp_subscription_id,
+             subscription_status, subscription_expires_at,
+             free_downloads_used, created_at
+      FROM users
+      ORDER BY
+        CASE WHEN subscription_status = 'authorized' THEN 0
+             WHEN subscription_status = 'pending' THEN 1 ELSE 2 END,
+        created_at DESC
+      LIMIT 1000
+    `);
+    const users = result.rows.map(user => ({
+      ...user,
+      subscription_active: user.subscription_status === 'authorized' &&
+        (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date())
+    }));
+    res.json({
+      ok: true,
+      total: users.length,
+      active: users.filter(u => u.subscription_active).length,
+      pending: users.filter(u => u.subscription_status === 'pending').length,
+      inactive: users.filter(u => !u.subscription_active && !['pending'].includes(u.subscription_status)).length,
+      subscriptions: users
+    });
+  } catch (error) {
+    console.error("Admin subscriptions:", error.message);
+    res.status(500).json({ error: "No se pudieron consultar las suscripciones." });
+  }
+});
+
 // Bloquear o desbloquear usuario
 router.patch("/admin/users/:id/block", requireAdmin, async (req, res) => {
   try {
