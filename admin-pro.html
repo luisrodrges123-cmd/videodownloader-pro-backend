@@ -486,6 +486,7 @@ td{color:#d9e5f5}
       <a class="nav-item" data-page="downloads"><span class="ico">⇩</span>Descargas</a>
       <a class="nav-item" data-page="platforms"><span class="ico">◈</span>Plataformas</a>
       <a class="nav-item" data-page="users"><span class="ico">♙</span>Usuarios</a>
+      <a class="nav-item" data-page="subscriptions"><span class="ico">✦</span>Suscripciones</a>
       <a class="nav-item" data-page="messages"><span class="ico">✉</span>Mensajes</a>
       <a class="nav-item" data-page="settings"><span class="ico">⚙</span>Configuración</a>
     </nav>
@@ -652,6 +653,21 @@ td{color:#d9e5f5}
   </section>
 </div>
 
+<!-- SUSCRIPCIONES -->
+<div class="section-page" id="page-subscriptions">
+  <div class="cards" style="margin-bottom:16px">
+    <article class="card"><div class="card-head">Suscriptores activos <span class="card-icon">✓</span></div><div class="metric" id="subActive">—</div><div class="metric-note">Plan mensual de $29 MXN</div></article>
+    <article class="card"><div class="card-head">Pagos pendientes <span class="card-icon">◷</span></div><div class="metric" id="subPending">—</div><div class="metric-note">Esperando autorización</div></article>
+    <article class="card"><div class="card-head">Sin suscripción activa <span class="card-icon">○</span></div><div class="metric" id="subInactive">—</div><div class="metric-note">Usuarios gratuitos o inactivos</div></article>
+    <article class="card"><div class="card-head">Usuarios consultados <span class="card-icon">♙</span></div><div class="metric" id="subTotal">—</div><div class="metric-note">Datos guardados en el servidor</div></article>
+  </div>
+  <section class="panel table-panel">
+    <div class="panel-title"><h2>Suscripciones y estado de pago</h2><div class="table-tools"><input id="subscriptionSearch" placeholder="Buscar usuario o correo…"><button class="btn" id="subscriptionsRefreshBtn">↻ Recargar</button></div></div>
+    <div class="table-wrap"><table style="min-width:850px"><thead><tr><th>ID</th><th>Usuario</th><th>Correo de pago</th><th>Estado</th><th>Próximo vencimiento</th><th>ID Mercado Pago</th><th>Descargas gratis</th></tr></thead><tbody id="subscriptionsTable"><tr><td colspan="7" class="empty">Pulsa recargar para consultar suscripciones.</td></tr></tbody></table></div>
+    <div class="toolbar-note">El estado se obtiene de la base de datos y se actualiza mediante las notificaciones de Mercado Pago. La fecha mostrada es la fecha de vencimiento/próximo cobro registrada por el servidor.</div>
+  </section>
+</div>
+
 <!-- MENSAJES -->
 <div class="section-page" id="page-messages">
 
@@ -780,6 +796,7 @@ let rows=[];
 let timer=null;
 let platformData=[];
 let users=[];
+let subscriptions=[];
 let messages=[];
 let editingMessageId=null;
 let settings={freeMode:true,maintenanceMode:false};
@@ -1043,6 +1060,41 @@ async function saveSettings(){
   }
 }
 
+// SUSCRIPCIONES
+async function loadSubscriptions(){
+  $("subscriptionsRefreshBtn").disabled=true;
+  $("subscriptionsTable").innerHTML='<tr><td colspan="7" class="empty">Consultando Mercado Pago y usuarios…</td></tr>';
+  try{
+    const d=await api("/subscriptions");
+    subscriptions=Array.isArray(d.subscriptions)?d.subscriptions:[];
+    $("subActive").textContent=fmt(d.active);
+    $("subPending").textContent=fmt(d.pending);
+    $("subInactive").textContent=fmt(d.inactive);
+    $("subTotal").textContent=fmt(d.total);
+    drawSubscriptions();
+  }catch(e){
+    $("subscriptionsTable").innerHTML=`<tr><td colspan="7" class="empty">${safe(e.message)}</td></tr>`;
+    toast("No se pudieron consultar las suscripciones.");
+  }finally{$("subscriptionsRefreshBtn").disabled=false;}
+}
+function subscriptionLabel(u){
+  const status=String(u.subscription_status||"none").toLowerCase();
+  if(u.subscription_active)return ['Activa','green'];
+  if(status==="pending")return ['Pendiente','orange'];
+  if(status==="cancelled"||status==="canceled")return ['Cancelada','red'];
+  if(status==="paused")return ['Pausada','orange'];
+  if(status==="authorized")return ['Vencida','red'];
+  return ['Sin suscripción','red'];
+}
+function drawSubscriptions(){
+  const q=$("subscriptionSearch").value.toLowerCase();
+  const filtered=subscriptions.filter(u=>[u.id,u.username,u.payer_email,u.mp_subscription_id,u.subscription_status].join(" ").toLowerCase().includes(q));
+  $("subscriptionsTable").innerHTML=filtered.length?filtered.map(u=>{
+    const [label,cls]=subscriptionLabel(u);
+    return `<tr><td>${safe(u.id)}</td><td>${safe(u.username||"—")}</td><td>${safe(u.payer_email||"—")}</td><td><span class="pill ${cls}">${label}</span></td><td>${safe(date(u.subscription_expires_at))}</td><td>${safe(u.mp_subscription_id||"—")}</td><td>${fmt(u.free_downloads_used||0)} / 5</td></tr>`;
+  }).join(""):'<tr><td colspan="7" class="empty">No hay usuarios que coincidan.</td></tr>';
+}
+
 // MENSAJES
 function resetMessageForm(){
   editingMessageId=null;
@@ -1284,6 +1336,7 @@ function logout(msg=""){
   $("loginError").textContent=msg;
 
   users=[];
+  subscriptions=[];
   messages=[];
   resetMessageForm();
 }
@@ -1317,6 +1370,8 @@ $("loginForm").addEventListener("submit",async e=>{
 // BOTONES
 $("refreshBtn").addEventListener("click",load);
 $("usersRefreshBtn").addEventListener("click",loadUsers);
+$("subscriptionsRefreshBtn").addEventListener("click",loadSubscriptions);
+$("subscriptionSearch").addEventListener("input",drawSubscriptions);
 $("userSearch").addEventListener("input",drawUsers);
 $("search").addEventListener("input",drawRows);
 
@@ -1362,6 +1417,7 @@ const titles={
   downloads:"Historial de descargas",
   platforms:"Plataformas",
   users:"Usuarios registrados",
+  subscriptions:"Suscripciones",
   messages:"Mensajes del administrador",
   settings:"Configuración"
 };
@@ -1382,6 +1438,7 @@ document.querySelectorAll(".nav-item").forEach(a=>{
     $("pageTitle").textContent=titles[a.dataset.page]||"Administrador";
 
     if(a.dataset.page==="users")loadUsers();
+    if(a.dataset.page==="subscriptions")loadSubscriptions();
     if(a.dataset.page==="settings")loadSettings();
     if(a.dataset.page==="messages")loadMessages();
   });
