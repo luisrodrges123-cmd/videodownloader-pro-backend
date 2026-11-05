@@ -120,55 +120,69 @@ async function getAuthenticatedUser(req) {
 async function checkDownloadAccess(req, res) {
   try {
     const settings = await getAppSettings();
-
     if (settings.maintenanceMode) {
-      res.status(503).json({
-        ok: false,
-        error: "Estamos en mantenimiento. Intenta más tarde.",
-        maintenanceMode: true
-      });
-
+      res.status(503).json({ ok:false, error:"Estamos en mantenimiento. Intenta más tarde.", maintenanceMode:true });
       return false;
     }
-
     const auth = await getAuthenticatedUser(req);
-
     if (auth.error) {
-      res.status(401).json({
-        ok: false,
-        error: auth.error
-      });
-
+      res.status(401).json({ ok:false, error:auth.error });
       return false;
     }
-
-    if (!settings.freeMode && !auth.user) {
-      res.status(401).json({
-        ok: false,
-        error: "Debes iniciar sesión para descargar videos.",
-        loginRequired: true
-      });
-
+    if (!auth.user) {
+      res.status(401).json({ ok:false, error:"Debes iniciar sesión para descargar videos.", loginRequired:true });
       return false;
     }
-
     req.user = auth.user;
-
     return true;
-
   } catch (error) {
-    console.error(
-      "Download access:",
-      error.stack || error.message
-    );
-
-    res.status(503).json({
-      ok: false,
-      error: "No se pudieron verificar los permisos de descarga."
-    });
-
+    console.error("Download access:", error.stack || error.message);
+    res.status(503).json({ ok:false, error:"No se pudieron verificar los permisos de descarga." });
     return false;
   }
+}
+
+async function reserveDownload(userId) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await client.query(`
+      SELECT free_downloads_used, subscription_status, subscription_expires_at
+      FROM users WHERE id=$1 AND is_blocked=FALSE FOR UPDATE
+    `, [userId]);
+    if (!result.rowCount) throw new Error("Cuenta no disponible.");
+    const user = result.rows[0];
+    const paid = user.subscription_status === "authorized" &&
+      (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date());
+    if (!paid && user.free_downloads_used >= 5) {
+      await client.query("ROLLBACK");
+      return { allowed:false, remaining:0 };
+    }
+    if (!paid) {
+      await client.query("UPDATE users SET free_downloads_used=free_downloads_used+1 WHERE id=$1", [userId]);
+    }
+    await client.query("COMMIT");
+    return { allowed:true, paid, remaining:paid ? null : Math.max(0,4-user.free_downloads_used) };
+  } catch (error) {
+    await client.query("ROLLBACK").catch(()=>{});
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function releaseReservation(userId, paid) {
+  if (!paid) await pool.query(
+    "UPDATE users SET free_downloads_used=GREATEST(0,free_downloads_used-1) WHERE id=$1", [userId]
+  );
+}
+
+async function ownsDownload(userId, providerId) {
+  const result = await pool.query(
+    "SELECT 1 FROM download_ownership WHERE provider_download_id=$1 AND user_id=$2",
+    [providerId,userId]
+  );
+  return result.rowCount > 0;
 }
 
 // ========================================
@@ -231,7 +245,18 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const response = await knightvision(
+    const reservation = await reserveDownload(req.user.id);
+    if (!reservation.allowed) {
+      return res.status(402).json({
+        ok:false, code:"SUBSCRIPTION_REQUIRED",
+        error:"Ya utilizaste tus 5 descargas gratis. Activa VDownloader Pro por $29 MXN al mes.",
+        freeDownloadsRemaining:0
+      });
+    }
+
+    let response;
+    try {
+      response = await knightvision(
       "/social-download",
       {
         method: "POST",
@@ -239,19 +264,31 @@ router.post("/", async (req, res) => {
           url: req.body.url
         })
       }
-    );
+      );
+    } catch (providerError) {
+      await releaseReservation(req.user.id, reservation.paid);
+      throw providerError;
+    }
 
     const data = await response.json();
 
     if (!data.download_id) {
+      await releaseReservation(req.user.id, reservation.paid);
       return res.status(502).json({
         ok: false,
         error: "Knightvision no devolvió un ID de descarga."
       });
     }
 
+    await pool.query(`
+      INSERT INTO download_ownership(provider_download_id,user_id,is_paid)
+      VALUES($1,$2,$3)
+      ON CONFLICT(provider_download_id) DO NOTHING
+    `, [String(data.download_id), req.user.id, reservation.paid]);
+
     return res.status(202).json({
       ok: true,
+      freeDownloadsRemaining: reservation.remaining,
       downloadId: data.download_id,
       status: data.status,
       platform: data.platform,
@@ -289,6 +326,10 @@ router.get("/:id", async (req, res) => {
         ok: false,
         error: "ID de descarga inválido."
       });
+    }
+
+    if (!(await ownsDownload(req.user.id, id))) {
+      return res.status(404).json({ ok:false, error:"Descarga no encontrada para esta cuenta." });
     }
 
     const response = await knightvision(
@@ -347,6 +388,10 @@ router.get("/:id/file/:idx", async (req, res) => {
         ok: false,
         error: "Archivo inválido."
       });
+    }
+
+    if (!(await ownsDownload(req.user.id, id))) {
+      return res.status(404).json({ ok:false, error:"Descarga no encontrada para esta cuenta." });
     }
 
     const response = await knightvision(

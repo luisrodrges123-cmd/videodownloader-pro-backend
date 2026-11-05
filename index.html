@@ -566,6 +566,21 @@ footer{
 
 </main>
 
+
+<section class="section" id="subscriptionPanel" style="display:none">
+  <div class="card">
+    <div class="section-head">
+      <h2>⭐ VDownloader Pro</h2>
+      <strong style="color:var(--cyan)">$29 MXN / mes</strong>
+    </div>
+    <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar la suscripción mensual automática.</p>
+    <label for="subscriptionEmail">Correo para Mercado Pago</label>
+    <input id="subscriptionEmail" type="email" autocomplete="email" placeholder="tu-correo@ejemplo.com" required>
+    <button class="btn primary wide" id="subscribeButton" onclick="startSubscription()">Activar suscripción mensual</button>
+    <p class="muted">Cobro recurrente automático con tarjeta mediante Mercado Pago. Puedes cancelar la suscripción.</p>
+  </div>
+</section>
+
 <section class="section">
   <div class="section-head">
     <h2>📥 Historial reciente</h2>
@@ -776,6 +791,7 @@ async function submitAuth(event) {
 
     token = data.token;
     currentUser = data.user;
+    refreshSubscriptionStatus();
 
     localStorage.setItem("vdp_token", token);
 
@@ -992,10 +1008,8 @@ function applyAppSettings() {
   const maintenance =
     document.getElementById("maintenanceBox");
 
-  const requiresLogin =
-    settingsLoaded &&
-    !appSettings.freeMode &&
-    !token;
+  // El contador gratuito es por cuenta: siempre debe existir una sesión.
+  const requiresLogin = !token;
 
   maintenance.classList.toggle(
     "show",
@@ -1181,8 +1195,6 @@ async function analyzeVideo() {
   }
 
   if (
-    settingsLoaded &&
-    !appSettings.freeMode &&
     !token
   ) {
     showStatus(
@@ -1281,6 +1293,13 @@ async function startDownload(url) {
   const data = await response.json();
 
   if (!response.ok) {
+    if (response.status === 402 && data.code === "SUBSCRIPTION_REQUIRED") {
+      await refreshSubscriptionStatus();
+      document.getElementById("subscriptionPanel").style.display = "block";
+      showStatus("Límite gratuito alcanzado", data.error || "Activa VDownloader Pro para continuar.", 0);
+      document.getElementById("subscriptionPanel").scrollIntoView({ behavior: "smooth", block: "center" });
+      throw new Error(data.error || "Necesitas una suscripción para continuar.");
+    }
     if (response.status === 401) {
       const loginRequired =
         data.loginRequired === true;
@@ -1606,6 +1625,95 @@ function safeFilename(name) {
     .slice(0, 150) || "video.mp4";
 }
 
+
+// ========================================
+// SUSCRIPCIÓN Y LÍMITE GRATUITO
+// ========================================
+
+async function refreshSubscriptionStatus() {
+  const panel = document.getElementById("subscriptionPanel");
+  const info = document.getElementById("subscriptionInfo");
+  if (!token) {
+    if (panel) panel.style.display = "none";
+    return;
+  }
+  try {
+    const response = await fetch(API + "/api/payments/status", {
+      headers: { Authorization: "Bearer " + token },
+      cache: "no-store"
+    });
+    const data = await response.json();
+    if (response.status === 401) {
+      localStorage.removeItem("vdp_token");
+      token = "";
+      currentUser = null;
+      updateAccount();
+      return;
+    }
+    if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo consultar el límite.");
+    if (panel) panel.style.display = "block";
+    const button = document.getElementById("subscribeButton");
+    if (data.subscriptionActive) {
+      if (info) info.textContent = "VDownloader Pro está activo. Tienes descargas ilimitadas.";
+      if (button) {
+        button.textContent = "Suscripción activa";
+        button.disabled = true;
+      }
+    } else {
+      const remaining = Number(data.freeDownloadsRemaining ?? 0);
+      if (info) info.textContent = `Te quedan ${remaining} de 5 descargas gratis. Después necesitas Pro por $29 MXN al mes.`;
+      if (button) {
+        button.textContent = "Activar suscripción mensual";
+        button.disabled = false;
+      }
+    }
+  } catch (error) {
+    console.error("Estado de suscripción:", error);
+    if (info) info.textContent = "No se pudo consultar tu límite. Intenta de nuevo.";
+  }
+}
+
+async function startSubscription() {
+  if (!token) {
+    openModal("login");
+    showStatus("Inicia sesión", "Necesitas una cuenta para activar Pro.", 0);
+    return;
+  }
+  const emailInput = document.getElementById("subscriptionEmail");
+  const email = String(emailInput?.value || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showStatus("Correo inválido", "Escribe un correo válido para continuar con Mercado Pago.", 0);
+    emailInput?.focus();
+    return;
+  }
+  const button = document.getElementById("subscribeButton");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Conectando con Mercado Pago...";
+  }
+  try {
+    const response = await fetch(API + "/api/payments/subscribe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ payer_email: email })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok || !data.initPoint) {
+      throw new Error(data.error || "No se pudo iniciar la suscripción.");
+    }
+    location.href = data.initPoint;
+  } catch (error) {
+    showStatus("No se pudo iniciar el pago", error.message, 0);
+    if (button) {
+      button.disabled = false;
+      button.textContent = "Activar suscripción mensual";
+    }
+  }
+}
+
 // ========================================
 // EVENTOS
 // ========================================
@@ -1627,6 +1735,10 @@ renderHistory();
 updateAccount();
 
 checkSession();
+refreshSubscriptionStatus();
+if (new URLSearchParams(location.search).get("subscription") === "return") {
+  setTimeout(refreshSubscriptionStatus, 1500);
+}
 loadPublicSettings();
 loadPublicMessages();
 

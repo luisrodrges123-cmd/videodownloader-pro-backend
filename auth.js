@@ -25,6 +25,15 @@ export async function initAuthDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  await pool.query(`
+    ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS free_downloads_used INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS payer_email TEXT,
+      ADD COLUMN IF NOT EXISTS mp_subscription_id TEXT,
+      ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'none',
+      ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ
+  `);
 }
 
 // Comprobar sesión opcional
