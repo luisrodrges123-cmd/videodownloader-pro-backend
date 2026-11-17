@@ -37,7 +37,31 @@ export async function initDb() {
       id BIGSERIAL PRIMARY KEY,
       event_key TEXT UNIQUE NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
+    );
+
+    CREATE TABLE IF NOT EXISTS conekta_orders (
+      id BIGSERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      order_id TEXT UNIQUE NOT NULL,
+      amount INTEGER NOT NULL,
+      currency VARCHAR(3) NOT NULL DEFAULT 'MXN',
+      status VARCHAR(40) NOT NULL DEFAULT 'pending_payment',
+      checkout_url TEXT,
+      payer_email TEXT,
+      payment_method TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ
+    );
+
+    CREATE INDEX IF NOT EXISTS conekta_orders_user_created_idx
+      ON conekta_orders(user_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS conekta_webhook_events (
+      event_id TEXT PRIMARY KEY,
+      event_type VARCHAR(80) NOT NULL,
+      received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   await pool.query(`
