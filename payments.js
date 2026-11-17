@@ -1,226 +1,255 @@
 import { Router } from "express";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createVerify, randomUUID } from "node:crypto";
 import { requiredAuth } from "./auth.js";
 import { pool } from "./db.js";
 import { logAdminEvent } from "./events.js";
 
 const router = Router();
-const PRICE = 29;
+const PRICE_MXN = 29;
+const AMOUNT_CENTS = 2900;
 const CURRENCY = "MXN";
 const APP_URL = process.env.PUBLIC_APP_URL || "https://luisrodrges123-cmd.github.io/videodownloader-pro-backend/";
 
-function mpHeaders() {
-  if (!process.env.MP_ACCESS_TOKEN) throw new Error("Falta MP_ACCESS_TOKEN en Render.");
-  return { Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`, "Content-Type": "application/json" };
+function conektaHeaders(extra = {}) {
+  const key = process.env.CONEKTA_PRIVATE_KEY;
+  if (!key) throw new Error("Falta CONEKTA_PRIVATE_KEY en Render.");
+  return {
+    Authorization: `Bearer ${key}`,
+    accept: "application/vnd.conekta-v2.3.0+json",
+    "content-type": "application/json",
+    "Accept-Language": "es",
+    ...extra
+  };
 }
-async function mpRequest(path, options = {}) {
-  const response = await fetch(`https://api.mercadopago.com${path}`, {
-    ...options, headers: { ...mpHeaders(), ...(options.headers || {}) }
+
+async function conektaRequest(path, options = {}) {
+  const response = await fetch(`https://api.conekta.io${path}`, {
+    ...options,
+    headers: conektaHeaders(options.headers || {}),
+    signal: AbortSignal.timeout(20000)
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || data.error || `Mercado Pago respondió ${response.status}`);
+  if (!response.ok) {
+    const message = data.details?.[0]?.message || data.message || data.object || `Conekta respondió ${response.status}`;
+    throw new Error(message);
+  }
   return data;
 }
+
 function validEmail(value) {
   return typeof value === "string" && value.length <= 254 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
-function verifyWebhook(req) {
-  const secret = process.env.MP_WEBHOOK_SECRET;
-  const signature = req.get("x-signature") || "";
-  const requestId = req.get("x-request-id") || "";
-  const dataId = String(req.query["data.id"] || req.query.id || req.body?.data?.id || "").toLowerCase();
-  if (!secret || !signature || !requestId || !dataId) return false;
 
-  const parts = Object.fromEntries(signature.split(",").map(p => {
-    const i = p.trim().indexOf("=");
-    return i < 0 ? ["", ""] : [p.trim().slice(0, i), p.trim().slice(i + 1)];
-  }));
-  if (!parts.ts || !parts.v1 || !/^\d+$/.test(parts.ts)) return false;
-  const timestamp = Number(parts.ts);
-  if (Math.abs(Date.now() - timestamp) > 5 * 60 * 1000) return false;
-
-  const manifest = `id:${dataId};request-id:${requestId};ts:${parts.ts};`;
-  const digest = createHmac("sha256", secret).update(manifest).digest("hex");
-  const a = Buffer.from(digest);
-  const b = Buffer.from(parts.v1);
-  return a.length === b.length && timingSafeEqual(a, b);
+function validPhone(value) {
+  return typeof value === "string" && /^\+?\d{10,15}$/.test(value.replace(/[\s()-]/g, ""));
 }
 
-router.post("/subscribe", requiredAuth, async (req, res) => {
+function verifyWebhook(req) {
+  const pem = process.env.CONEKTA_WEBHOOK_PUBLIC_KEY;
+  const raw = req.rawBody;
+  const digest = req.get("digest");
+  if (!pem || !raw || !digest) return false;
   try {
-    const email = String(req.body?.payer_email || "").trim().toLowerCase();
+    const verifier = createVerify("RSA-SHA256");
+    verifier.update(raw);
+    verifier.end();
+    return verifier.verify(pem, Buffer.from(digest.trim(), "base64"));
+  } catch {
+    return false;
+  }
+}
+
+router.post("/checkout", requiredAuth, async (req, res) => {
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const phone = String(req.body?.phone || "").trim().replace(/[\s()-]/g, "");
     if (!validEmail(email)) return res.status(400).json({ ok:false, error:"Escribe un correo electrónico válido." });
+    if (!validPhone(phone)) return res.status(400).json({ ok:false, error:"Escribe un teléfono con lada de país, por ejemplo +526691234567." });
 
-    const existing = await pool.query(
-      `SELECT subscription_status, subscription_expires_at, admin_premium_until FROM users WHERE id=$1`, [req.user.id]
-    );
-    if (existing.rows[0]?.admin_premium_until && new Date(existing.rows[0].admin_premium_until) > new Date()) {
-      return res.status(409).json({ ok:false, error:"Tu cuenta ya tiene Premium activo." });
-    }
-    if (existing.rows[0]?.subscription_status === "authorized" &&
-        (!existing.rows[0].subscription_expires_at || new Date(existing.rows[0].subscription_expires_at) > new Date())) {
-      return res.status(409).json({ ok:false, error:"Tu suscripción ya está activa." });
-    }
+    const account = await pool.query(`
+      SELECT username, display_name, admin_premium_until, subscription_status, subscription_expires_at
+      FROM users WHERE id=$1 AND is_blocked=FALSE
+    `, [req.user.id]);
+    if (!account.rowCount) return res.status(404).json({ ok:false, error:"Cuenta no disponible." });
+    const u = account.rows[0];
+    const active = (u.admin_premium_until && new Date(u.admin_premium_until) > new Date()) ||
+      (u.subscription_status === "authorized" && u.subscription_expires_at && new Date(u.subscription_expires_at) > new Date());
+    if (active) return res.status(409).json({ ok:false, error:"Tu cuenta ya tiene Premium activo." });
 
-    const preference = await mpRequest("/preapproval", {
+    const idempotencyKey = randomUUID();
+    const order = await conektaRequest("/orders", {
       method: "POST",
+      headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify({
-        reason: "VDownloader Pro - suscripción mensual",
-        external_reference: `vdp_user_${req.user.id}`,
-        payer_email: email,
-        auto_recurring: {
-          frequency: 1, frequency_type: "months",
-          transaction_amount: PRICE, currency_id: CURRENCY
+        currency: CURRENCY,
+        customer_info: {
+          name: String(u.display_name || u.username).slice(0, 100),
+          email,
+          phone
         },
-        back_url: `${APP_URL}?subscription=return`,
-        status: "pending"
+        line_items: [{
+          name: "VDownloader Pro Premium - 30 días",
+          description: "Acceso Premium durante 30 días",
+          quantity: 1,
+          unit_price: AMOUNT_CENTS
+        }],
+        metadata: {
+          app: "vdownloader-pro",
+          user_id: String(req.user.id),
+          plan: "premium_30_days"
+        },
+        checkout: {
+          type: "HostedPayment",
+          name: "VDownloader Pro Premium",
+          success_url: `${APP_URL}?payment=return`,
+          failure_url: `${APP_URL}?payment=failed`
+        }
       })
     });
 
-    await pool.query("UPDATE users SET payer_email=$1, mp_subscription_id=$2 WHERE id=$3",
-      [email, preference.id, req.user.id]);
+    if (!order.id || !order.checkout?.url) {
+      throw new Error("Conekta no devolvió el enlace de pago de la orden.");
+    }
+
+    await pool.query(`
+      INSERT INTO conekta_orders
+        (user_id, order_id, amount, currency, status, checkout_url, payer_email, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+      ON CONFLICT (order_id) DO NOTHING
+    `, [req.user.id, order.id, AMOUNT_CENTS, CURRENCY, order.payment_status || "pending_payment", order.checkout.url, email]);
+
+    await pool.query("UPDATE users SET payer_email=$1 WHERE id=$2", [email, req.user.id]);
     await logAdminEvent({
       type: "subscription_started", category: "payments", userId: req.user.id,
-      username: req.user.username, details: "Se inició la suscripción mensual de VDownloader Pro."
+      username: req.user.username,
+      details: `Se creó una orden Conekta por $${PRICE_MXN} MXN. Referencia: ${order.id}.`
     });
-
     return res.status(201).json({
-      ok:true, initPoint: preference.init_point, subscriptionId: preference.id,
-      price: PRICE, currency: CURRENCY
+      ok:true, checkoutUrl:order.checkout.url, orderId:order.id,
+      amount:PRICE_MXN, currency:CURRENCY, status:order.payment_status || "pending_payment"
     });
   } catch (error) {
+    console.error("Conekta create checkout:", error.message);
     await logAdminEvent({
-      type: "payment_error", category: "payments", userId: req.user?.id,
-      username: req.user?.username, details: "No se pudo iniciar una suscripción de Mercado Pago."
+      type:"payment_error", category:"payments", userId:req.user?.id,
+      username:req.user?.username, details:"No se pudo crear la orden de pago Conekta."
     });
-    console.error("Create Mercado Pago subscription:", error.message);
-    return res.status(502).json({ ok:false, error:"No se pudo iniciar la suscripción. Revisa la configuración de Mercado Pago." });
+    return res.status(502).json({ ok:false, error:"No se pudo iniciar el pago. Revisa la configuración de Conekta e inténtalo de nuevo." });
   }
 });
 
 router.get("/status", requiredAuth, async (req, res) => {
   try {
-    // Consultar Mercado Pago al volver del checkout y al abrir la cuenta.
-    // Así no dependemos exclusivamente del tiempo de entrega del webhook.
     const result = await pool.query(`
-      SELECT free_downloads_used, payer_email, mp_subscription_id, admin_premium_until,
+      SELECT free_downloads_used, payer_email, admin_premium_until,
              subscription_status, subscription_expires_at
       FROM users WHERE id=$1
     `, [req.user.id]);
     const u = result.rows[0];
     if (!u) return res.status(404).json({ ok:false, error:"Cuenta no encontrada." });
-
-    let status = u.subscription_status || "none";
-    let expiresAt = u.subscription_expires_at;
-    if (u.mp_subscription_id && process.env.MP_ACCESS_TOKEN) {
-      try {
-        const sub = await mpRequest(`/preapproval/${encodeURIComponent(u.mp_subscription_id)}`);
-        const expectedReference = `vdp_user_${req.user.id}`;
-        const correctPlan = sub.external_reference === expectedReference &&
-          Number(sub.auto_recurring?.transaction_amount) === PRICE &&
-          sub.auto_recurring?.currency_id === CURRENCY &&
-          Number(sub.auto_recurring?.frequency) === 1 &&
-          sub.auto_recurring?.frequency_type === "months";
-        if (correctPlan) {
-          status = String(sub.status || "pending").toLowerCase();
-          expiresAt = sub.next_payment_date ? new Date(sub.next_payment_date) : null;
-          await pool.query(`
-            UPDATE users SET subscription_status=$1, subscription_expires_at=$2,
-              payer_email=COALESCE($3,payer_email)
-            WHERE id=$4 AND mp_subscription_id=$5
-          `, [status, expiresAt, sub.payer_email || null, req.user.id, String(sub.id)]);
-        }
-      } catch (syncError) {
-        // Si Mercado Pago no responde, mostrar el último estado confirmado localmente.
-        console.error("No se pudo sincronizar Mercado Pago:", syncError.message);
-      }
-    }
-
-    const adminPremiumActive = u.admin_premium_until && new Date(u.admin_premium_until) > new Date();
-    const active = Boolean(adminPremiumActive) || (status === "authorized" &&
-      (!expiresAt || new Date(expiresAt) > new Date()));
+    const adminActive = u.admin_premium_until && new Date(u.admin_premium_until) > new Date();
+    const paidActive = u.subscription_status === "authorized" &&
+      u.subscription_expires_at && new Date(u.subscription_expires_at) > new Date();
+    const active = Boolean(adminActive || paidActive);
+    const lastOrder = await pool.query(`
+      SELECT order_id, status, amount, currency, created_at, paid_at
+      FROM conekta_orders WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1
+    `, [req.user.id]);
     return res.json({
       ok:true, freeDownloadsUsed:u.free_downloads_used,
       freeDownloadsRemaining:active ? null : Math.max(0,5-u.free_downloads_used),
-      subscriptionActive:active, subscriptionStatus:adminPremiumActive ? "admin" : status,
-      premiumSource:adminPremiumActive ? "admin" : status === "authorized" ? "mercadopago" : null,
+      subscriptionActive:active,
+      subscriptionStatus:adminActive ? "admin" : u.subscription_status || "none",
+      premiumSource:adminActive ? "admin" : paidActive ? "conekta" : null,
       adminPremiumUntil:u.admin_premium_until,
-      subscriptionExpiresAt:expiresAt, price:PRICE, currency:CURRENCY
+      subscriptionExpiresAt:u.subscription_expires_at,
+      lastPayment:lastOrder.rows[0] || null,
+      price:PRICE_MXN, currency:CURRENCY
     });
   } catch (error) {
-    console.error("Subscription status:", error.message);
-    return res.status(503).json({ ok:false, error:"No se pudo consultar tu suscripción." });
+    console.error("Conekta payment status:", error.message);
+    return res.status(503).json({ ok:false, error:"No se pudo consultar tu estado de pago." });
   }
 });
 
 router.post("/webhook", async (req, res) => {
   try {
     if (!verifyWebhook(req)) return res.status(401).json({ ok:false, error:"Firma de webhook inválida." });
-    const topic = String(req.query.type || req.query.topic || req.body?.type || "");
-    const id = String(req.query["data.id"] || req.query.id || req.body?.data?.id || "");
-    if (!id || !["subscription_preapproval","preapproval"].includes(topic)) return res.sendStatus(200);
+    const event = JSON.parse(req.rawBody.toString("utf8"));
+    const eventId = String(event.id || "");
+    const eventType = String(event.type || "");
+    const object = event.data?.object || {};
+    if (!eventId || !eventType) return res.status(400).json({ ok:false });
 
-    const sub = await mpRequest(`/preapproval/${encodeURIComponent(id)}`);
-    const match = String(sub.external_reference || "").match(/^vdp_user_(\d+)$/);
-    if (!match) return res.sendStatus(200);
-    const userId = Number(match[1]);
+    if (!["order.paid", "order.pending_payment", "order.declined"].includes(eventType)) {
+      return res.sendStatus(200);
+    }
+    const orderId = String(object.id || object.order_id || "");
+    if (!orderId) return res.status(400).json({ ok:false });
 
-    // Verify amount/currency as well as the user reference; never trust webhook body.
-    const correctPlan = Number(sub.auto_recurring?.transaction_amount) === PRICE &&
-      sub.auto_recurring?.currency_id === CURRENCY &&
-      Number(sub.auto_recurring?.frequency) === 1 &&
-      sub.auto_recurring?.frequency_type === "months";
-    if (!correctPlan) return res.status(400).json({ ok:false, error:"El plan notificado no coincide." });
+    // Nunca activar Premium con el JSON recibido solamente: consultamos la orden en Conekta.
+    const order = await conektaRequest(`/orders/${encodeURIComponent(orderId)}`);
+    const metadata = order.metadata || {};
+    const userId = Number(metadata.user_id);
+    if (metadata.app !== "vdownloader-pro" || !Number.isInteger(userId) || userId < 1) {
+      return res.status(200).json({ ok:true, ignored:true });
+    }
+    if (order.currency !== CURRENCY || Number(order.amount) !== AMOUNT_CENTS) {
+      console.error("Conekta webhook: importe/moneda no coinciden", orderId);
+      return res.status(400).json({ ok:false, error:"Importe o moneda no coinciden." });
+    }
 
-    const eventKey = `preapproval:${sub.id}:${sub.status}:${sub.next_payment_date || ""}`;
-    const inserted = await pool.query(
-      "INSERT INTO mp_webhook_events(event_key) VALUES($1) ON CONFLICT DO NOTHING RETURNING id", [eventKey]
-    );
-    if (!inserted.rowCount) return res.sendStatus(200);
+    const paid = eventType === "order.paid" && order.payment_status === "paid";
+    const paymentStatus = String(order.payment_status || eventType);
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const seen = await client.query(`
+        INSERT INTO conekta_webhook_events(event_id,event_type)
+        VALUES($1,$2) ON CONFLICT(event_id) DO NOTHING RETURNING event_id
+      `, [eventId,eventType]);
+      if (!seen.rowCount) {
+        await client.query("COMMIT");
+        return res.sendStatus(200);
+      }
 
-    const status = String(sub.status || "pending").toLowerCase();
-    const expiry = sub.next_payment_date ? new Date(sub.next_payment_date) : null;
-    await pool.query(`
-      UPDATE users SET
-        mp_subscription_id=$1,
-        payer_email=COALESCE($2,payer_email),
-        subscription_status=$3,
-        subscription_expires_at=$4
-      WHERE id=$5
-    `, [String(sub.id), sub.payer_email || null, status, expiry, userId]);
+      const stored = await client.query(`
+        UPDATE conekta_orders SET status=$1, paid_at=CASE WHEN $2 THEN COALESCE(paid_at,NOW()) ELSE paid_at END,
+          payment_method=COALESCE($3,payment_method), updated_at=NOW()
+        WHERE order_id=$4 AND user_id=$5
+        RETURNING id
+      `, [paymentStatus, paid, object.charges?.data?.[0]?.payment_method?.object || object.payment_method?.object || null, orderId,userId]);
 
-    const account = await pool.query("SELECT username FROM users WHERE id=$1", [userId]);
-    await logAdminEvent({
-      type: "subscription_changed", category: "payments", userId,
-      username: account.rows[0]?.username,
-      details: `Estado de suscripción actualizado: ${status}.`
-    });
+      if (paid && stored.rowCount) {
+        await client.query(`
+          UPDATE users SET
+            subscription_status='authorized',
+            subscription_expires_at=GREATEST(COALESCE(subscription_expires_at,NOW()),NOW()) + INTERVAL '30 days',
+            payer_email=COALESCE($1,payer_email)
+          WHERE id=$2
+        `, [order.customer_info?.email || null,userId]);
+      }
+      await client.query("COMMIT");
 
-    return res.sendStatus(200);
+      if (paid && stored.rowCount) {
+        const account = await pool.query("SELECT username FROM users WHERE id=$1",[userId]);
+        await logAdminEvent({
+          type:"subscription_changed", category:"payments", userId,
+          username:account.rows[0]?.username,
+          details:`Pago Conekta confirmado. Premium extendido 30 días. Orden: ${orderId}.`
+        });
+      }
+      return res.sendStatus(200);
+    } catch (error) {
+      await client.query("ROLLBACK").catch(()=>{});
+      throw error;
+    } finally {
+      client.release();
+    }
   } catch (error) {
-    console.error("Mercado Pago webhook:", error.message);
+    console.error("Conekta webhook:", error.message);
     return res.status(500).json({ ok:false });
-  }
-});
-
-router.post("/cancel", requiredAuth, async (req, res) => {
-  try {
-    const result = await pool.query("SELECT mp_subscription_id FROM users WHERE id=$1", [req.user.id]);
-    const id = result.rows[0]?.mp_subscription_id;
-    if (!id) return res.status(404).json({ ok:false, error:"No tienes una suscripción registrada." });
-    const sub = await mpRequest(`/preapproval/${encodeURIComponent(id)}`, {
-      method:"PUT", body:JSON.stringify({status:"cancelled"})
-    });
-    await pool.query("UPDATE users SET subscription_status=$1 WHERE id=$2", [sub.status || "cancelled", req.user.id]);
-    await logAdminEvent({
-      type: "subscription_cancelled", category: "payments", userId: req.user.id,
-      username: req.user.username, details: "El usuario canceló su suscripción de Mercado Pago."
-    });
-    return res.json({ok:true, status:sub.status});
-  } catch (error) {
-    console.error("Cancel subscription:", error.message);
-    return res.status(502).json({ok:false,error:"No se pudo cancelar la suscripción."});
   }
 });
 

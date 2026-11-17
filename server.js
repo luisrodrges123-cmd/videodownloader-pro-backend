@@ -31,7 +31,14 @@ app.use(cors({
   }
 }));
 
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({
+  limit: "10kb",
+  verify(req, _res, buffer) {
+    if (req.originalUrl === "/api/payments/webhook") {
+      req.rawBody = Buffer.from(buffer);
+    }
+  }
+}));
 
 app.use("/api", rateLimit({
   windowMs: 60000,

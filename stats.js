@@ -333,7 +333,7 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       return {
         ...user,
         premium_active: adminActive || paidActive,
-        premium_source: adminActive ? "admin" : paidActive ? "mercadopago" : null
+        premium_source: adminActive ? "admin" : paidActive ? "conekta" : null
       };
     });
 
@@ -436,14 +436,22 @@ router.patch("/admin/users/:id/premium", requireAdmin, async (req, res) => {
 router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, username, payer_email, mp_subscription_id, admin_premium_until,
-             subscription_status, subscription_expires_at,
-             free_downloads_used, created_at
-      FROM users
+      SELECT u.id, u.username, u.payer_email, u.mp_subscription_id, u.admin_premium_until,
+             u.subscription_status, u.subscription_expires_at,
+             u.free_downloads_used, u.created_at,
+             p.order_id AS latest_order_id, p.status AS latest_payment_status,
+             p.amount AS latest_payment_amount, p.paid_at AS latest_payment_at
+      FROM users u
+      LEFT JOIN LATERAL (
+        SELECT order_id, status, amount, paid_at
+        FROM conekta_orders
+        WHERE user_id=u.id
+        ORDER BY created_at DESC LIMIT 1
+      ) p ON TRUE
       ORDER BY
-        CASE WHEN subscription_status = 'authorized' THEN 0
-             WHEN subscription_status = 'pending' THEN 1 ELSE 2 END,
-        created_at DESC
+        CASE WHEN u.subscription_status = 'authorized' THEN 0
+             WHEN u.subscription_status = 'pending' THEN 1 ELSE 2 END,
+        u.created_at DESC
       LIMIT 1000
     `);
     const users = result.rows.map(user => ({
@@ -452,14 +460,14 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
         (user.subscription_status === 'authorized' &&
         (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date())),
       premium_source: user.admin_premium_until && new Date(user.admin_premium_until) > new Date()
-        ? 'admin' : user.subscription_status === 'authorized' ? 'mercadopago' : null
+        ? 'admin' : user.subscription_status === 'authorized' ? 'conekta' : null
     }));
     res.json({
       ok: true,
       total: users.length,
       active: users.filter(u => u.subscription_active).length,
-      pending: users.filter(u => u.subscription_status === 'pending').length,
-      inactive: users.filter(u => !u.subscription_active && !['pending'].includes(u.subscription_status)).length,
+      pending: users.filter(u => u.latest_payment_status === 'pending_payment').length,
+      inactive: users.filter(u => !u.subscription_active && u.latest_payment_status !== 'pending_payment').length,
       subscriptions: users
     });
   } catch (error) {
