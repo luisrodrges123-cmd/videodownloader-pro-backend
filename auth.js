@@ -34,7 +34,9 @@ export async function initAuthDb() {
       ADD COLUMN IF NOT EXISTS mp_subscription_id TEXT,
       ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'none',
       ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ,
-      ADD COLUMN IF NOT EXISTS admin_premium_until TIMESTAMPTZ
+      ADD COLUMN IF NOT EXISTS admin_premium_until TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS display_name VARCHAR(50),
+      ADD COLUMN IF NOT EXISTS email VARCHAR(254)
   `);
 }
 
@@ -52,7 +54,7 @@ export async function optionalAuth(req, res, next) {
     const decoded = jwt.verify(token, getSecret());
 
     const result = await pool.query(
-      `SELECT id, username, is_blocked
+      `SELECT id, username, display_name, email, created_at, is_blocked
        FROM users
        WHERE id = $1`,
       [decoded.id]
@@ -66,7 +68,10 @@ export async function optionalAuth(req, res, next) {
 
     req.user = {
       id: result.rows[0].id,
-      username: result.rows[0].username
+      username: result.rows[0].username,
+      display_name: result.rows[0].display_name,
+      email: result.rows[0].email,
+      created_at: result.rows[0].created_at
     };
 
     return next();
@@ -128,7 +133,7 @@ router.post("/register", async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (username, password_hash)
        VALUES ($1, $2)
-       RETURNING id, username`,
+       RETURNING id, username, display_name, email, created_at`,
       [username, passwordHash]
     );
 
@@ -174,7 +179,7 @@ router.post("/login", async (req, res) => {
     const password = String(req.body.password || "");
 
     const result = await pool.query(
-      `SELECT id, username, password_hash, is_blocked
+      `SELECT id, username, display_name, email, created_at, password_hash, is_blocked
        FROM users
        WHERE username = $1`,
       [username]
@@ -224,7 +229,10 @@ router.post("/login", async (req, res) => {
       token,
       user: {
         id: user.id,
-        username: user.username
+        username: user.username,
+        display_name: user.display_name,
+        email: user.email,
+        created_at: user.created_at
       }
     });
   } catch (error) {
@@ -241,6 +249,38 @@ router.get("/me", requiredAuth, (req, res) => {
   return res.json({
     user: req.user
   });
+});
+
+// Guardar el perfil asociado a la cuenta autenticada.
+router.put("/profile", requiredAuth, async (req, res) => {
+  try {
+    const displayName = String(req.body?.display_name || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+
+    if (displayName.length < 2 || displayName.length > 50) {
+      return res.status(400).json({ error: "El nombre de perfil debe tener entre 2 y 50 caracteres." });
+    }
+    if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+      return res.status(400).json({ error: "Escribe un correo electrónico válido." });
+    }
+
+    const result = await pool.query(`
+      UPDATE users
+      SET display_name=$1, email=$2
+      WHERE id=$3
+      RETURNING id, username, display_name, email, created_at
+    `, [displayName, email || null, req.user.id]);
+
+    if (!result.rows.length) return res.status(404).json({ error: "Cuenta no encontrada." });
+    await logAdminEvent({
+      type: "profile_updated", category: "security", userId: req.user.id,
+      username: req.user.username, details: "El usuario actualizó su perfil."
+    });
+    return res.json({ ok: true, user: result.rows[0] });
+  } catch (error) {
+    console.error("Update profile:", error.message);
+    return res.status(500).json({ error: "No se pudo guardar el perfil." });
+  }
 });
 
 export default router;

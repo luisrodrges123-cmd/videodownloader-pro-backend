@@ -369,15 +369,19 @@ footer{
   line-height:1.5;
   margin-top:12px;
 }
+.profile-help{color:var(--muted);font-size:13px;line-height:1.55;margin:-6px 0 18px}
+input[readonly]{color:var(--muted);cursor:default}
 
 .account{
   display:none;
   align-items:center;
   gap:9px;
+  flex-wrap:wrap;
   color:#a8f2db;
   font-size:12px;
   font-weight:800;
 }
+.account span{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* Avisos */
 
@@ -582,6 +586,7 @@ footer{color:#73839b;margin-top:60px}
 
   <div class="account" id="accountBox">
     <span id="accountName"></span>
+    <button class="btn" type="button" onclick="openProfile()">Mi perfil</button>
     <button class="btn" onclick="logout()">Salir</button>
   </div>
 </header>
@@ -739,6 +744,33 @@ footer{color:#73839b;margin-top:60px}
   </div>
 </div>
 
+<!-- PERFIL DE USUARIO -->
+<div class="modal" id="profileModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2>Mi perfil</h2>
+      <button class="close" type="button" onclick="closeProfile()" aria-label="Cerrar">×</button>
+    </div>
+    <p class="profile-help">Tu perfil queda guardado en tu cuenta y estará disponible cuando vuelvas a iniciar sesión.</p>
+    <form id="profileForm" onsubmit="saveProfile(event)">
+      <div class="field">
+        <label for="profileUsername">Usuario de acceso</label>
+        <input id="profileUsername" readonly>
+      </div>
+      <div class="field">
+        <label for="profileDisplayName">Nombre de perfil</label>
+        <input id="profileDisplayName" minlength="2" maxlength="50" required autocomplete="name" placeholder="Cómo quieres aparecer">
+      </div>
+      <div class="field">
+        <label for="profileEmail">Correo electrónico (opcional)</label>
+        <input id="profileEmail" type="email" maxlength="254" autocomplete="email" placeholder="tu-correo@ejemplo.com">
+      </div>
+      <button class="btn primary wide" id="saveProfileButton" type="submit">Guardar perfil</button>
+      <div class="message" id="profileMessage" role="status"></div>
+    </form>
+  </div>
+</div>
+
 <script>
 "use strict";
 
@@ -800,6 +832,54 @@ function openModal(mode) {
 
 function closeModal() {
   document.getElementById("authModal").classList.remove("show");
+}
+
+function openProfile() {
+  if (!token || !currentUser) return;
+  document.getElementById("profileUsername").value = currentUser.username || "";
+  document.getElementById("profileDisplayName").value = currentUser.display_name || currentUser.username || "";
+  document.getElementById("profileEmail").value = currentUser.email || "";
+  document.getElementById("profileMessage").textContent = "";
+  document.getElementById("profileModal").classList.add("show");
+}
+
+function closeProfile() {
+  document.getElementById("profileModal").classList.remove("show");
+}
+
+async function saveProfile(event) {
+  event.preventDefault();
+  if (!token) return;
+
+  const button = document.getElementById("saveProfileButton");
+  const message = document.getElementById("profileMessage");
+  button.disabled = true;
+  button.textContent = "Guardando...";
+  message.textContent = "";
+
+  try {
+    const response = await fetch(API + "/api/auth/profile", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({
+        display_name: document.getElementById("profileDisplayName").value,
+        email: document.getElementById("profileEmail").value
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "No se pudo guardar el perfil.");
+    currentUser = data.user;
+    updateAccount();
+    message.textContent = "Perfil guardado en tu cuenta.";
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Guardar perfil";
+  }
 }
 
 function switchAuth() {
@@ -913,7 +993,7 @@ function updateAccount() {
     logged ? "flex" : "none";
 
   document.getElementById("accountName").textContent =
-    logged ? "👤 " + currentUser.username : "";
+    logged ? "👤 " + (currentUser.display_name || currentUser.username) : "";
 
   const info = document.getElementById("accessInfo");
 

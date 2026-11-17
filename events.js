@@ -13,6 +13,7 @@ const EVENT_TITLES = {
   admin_user_created: "Cuenta creada desde administración",
   login_succeeded: "Inicio de sesión",
   login_failed: "Intento de inicio de sesión fallido",
+  profile_updated: "Perfil actualizado",
   download_requested: "Descarga solicitada",
   download_completed: "Descarga completada",
   download_failed: "Error al procesar una descarga",
