@@ -52,8 +52,11 @@ router.post("/subscribe", requiredAuth, async (req, res) => {
     if (!validEmail(email)) return res.status(400).json({ ok:false, error:"Escribe un correo electrónico válido." });
 
     const existing = await pool.query(
-      `SELECT subscription_status, subscription_expires_at FROM users WHERE id=$1`, [req.user.id]
+      `SELECT subscription_status, subscription_expires_at, admin_premium_until FROM users WHERE id=$1`, [req.user.id]
     );
+    if (existing.rows[0]?.admin_premium_until && new Date(existing.rows[0].admin_premium_until) > new Date()) {
+      return res.status(409).json({ ok:false, error:"Tu cuenta ya tiene Premium activo." });
+    }
     if (existing.rows[0]?.subscription_status === "authorized" &&
         (!existing.rows[0].subscription_expires_at || new Date(existing.rows[0].subscription_expires_at) > new Date())) {
       return res.status(409).json({ ok:false, error:"Tu suscripción ya está activa." });
@@ -92,7 +95,7 @@ router.get("/status", requiredAuth, async (req, res) => {
     // Consultar Mercado Pago al volver del checkout y al abrir la cuenta.
     // Así no dependemos exclusivamente del tiempo de entrega del webhook.
     const result = await pool.query(`
-      SELECT free_downloads_used, payer_email, mp_subscription_id,
+      SELECT free_downloads_used, payer_email, mp_subscription_id, admin_premium_until,
              subscription_status, subscription_expires_at
       FROM users WHERE id=$1
     `, [req.user.id]);
@@ -125,12 +128,15 @@ router.get("/status", requiredAuth, async (req, res) => {
       }
     }
 
-    const active = status === "authorized" &&
-      (!expiresAt || new Date(expiresAt) > new Date());
+    const adminPremiumActive = u.admin_premium_until && new Date(u.admin_premium_until) > new Date();
+    const active = Boolean(adminPremiumActive) || (status === "authorized" &&
+      (!expiresAt || new Date(expiresAt) > new Date()));
     return res.json({
       ok:true, freeDownloadsUsed:u.free_downloads_used,
       freeDownloadsRemaining:active ? null : Math.max(0,5-u.free_downloads_used),
-      subscriptionActive:active, subscriptionStatus:status,
+      subscriptionActive:active, subscriptionStatus:adminPremiumActive ? "admin" : status,
+      premiumSource:adminPremiumActive ? "admin" : status === "authorized" ? "mercadopago" : null,
+      adminPremiumUntil:u.admin_premium_until,
       subscriptionExpiresAt:expiresAt, price:PRICE, currency:CURRENCY
     });
   } catch (error) {

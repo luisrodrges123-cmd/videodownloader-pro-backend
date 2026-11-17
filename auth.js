@@ -32,7 +32,8 @@ export async function initAuthDb() {
       ADD COLUMN IF NOT EXISTS payer_email TEXT,
       ADD COLUMN IF NOT EXISTS mp_subscription_id TEXT,
       ADD COLUMN IF NOT EXISTS subscription_status TEXT NOT NULL DEFAULT 'none',
-      ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ
+      ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS admin_premium_until TIMESTAMPTZ
   `);
 }
 

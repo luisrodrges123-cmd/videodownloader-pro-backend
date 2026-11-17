@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { timingSafeEqual } from "node:crypto";
+import bcrypt from "bcryptjs";
 import { pool } from "./db.js";
 
 const router = Router();
@@ -185,15 +186,28 @@ router.get("/admin", requireAdmin, async (_req, res) => {
 router.get("/admin/users", requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, username, is_blocked, created_at
+      SELECT id, username, is_blocked, created_at, admin_premium_until,
+             subscription_status, subscription_expires_at,
+             (admin_premium_until > NOW()) AS admin_premium_active
       FROM users
       ORDER BY created_at DESC
       LIMIT 500
     `);
 
+    const users = result.rows.map(user => {
+      const paidActive = user.subscription_status === "authorized" &&
+        (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date());
+      const adminActive = Boolean(user.admin_premium_active);
+      return {
+        ...user,
+        premium_active: adminActive || paidActive,
+        premium_source: adminActive ? "admin" : paidActive ? "mercadopago" : null
+      };
+    });
+
     res.json({
       ok: true,
-      users: result.rows
+      users
     });
   } catch (error) {
     console.error("Admin users:", error.message);
@@ -203,11 +217,80 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
   }
 });
 
+// Crear cuentas desde el panel de administración, opcionalmente con Premium.
+router.post("/admin/users", requireAdmin, async (req, res) => {
+  try {
+    const username = String(req.body?.username || "").trim().toLowerCase();
+    const password = String(req.body?.password || "");
+    const premium = req.body?.premium === true;
+    const months = Number(req.body?.months || 1);
+
+    if (!/^[a-z0-9_]{3,30}$/.test(username)) {
+      return res.status(400).json({ error: "El usuario debe tener entre 3 y 30 caracteres: letras, números o _." });
+    }
+    if (password.length < 8 || password.length > 72) {
+      return res.status(400).json({ error: "La contraseña debe tener entre 8 y 72 caracteres." });
+    }
+    if (premium && ![1, 3, 6, 12].includes(months)) {
+      return res.status(400).json({ error: "Elige una duración Premium válida." });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const result = await pool.query(`
+      INSERT INTO users (username, password_hash, admin_premium_until)
+      VALUES ($1, $2, CASE WHEN $3 THEN NOW() + ($4::text || ' months')::interval ELSE NULL END)
+      RETURNING id, username, created_at, admin_premium_until,
+                (admin_premium_until > NOW()) AS admin_premium_active
+    `, [username, passwordHash, premium, months]);
+
+    return res.status(201).json({ ok: true, user: result.rows[0] });
+  } catch (error) {
+    if (error.code === "23505") {
+      return res.status(409).json({ error: "Ese nombre de usuario ya existe." });
+    }
+    console.error("Admin create user:", error.message);
+    return res.status(500).json({ error: "No se pudo crear la cuenta." });
+  }
+});
+
+// Activar o quitar Premium manual a una cuenta existente.
+router.patch("/admin/users/:id/premium", requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const active = req.body?.active;
+    const months = Number(req.body?.months || 1);
+
+    if (!Number.isInteger(id) || id < 1 || typeof active !== "boolean") {
+      return res.status(400).json({ error: "Datos de cuenta inválidos." });
+    }
+    if (active && ![1, 3, 6, 12].includes(months)) {
+      return res.status(400).json({ error: "Elige una duración Premium válida." });
+    }
+
+    const result = await pool.query(`
+      UPDATE users
+      SET admin_premium_until = CASE
+        WHEN $1 THEN NOW() + ($2::text || ' months')::interval
+        ELSE NULL
+      END
+      WHERE id = $3
+      RETURNING id, username, admin_premium_until,
+                (admin_premium_until > NOW()) AS admin_premium_active
+    `, [active, months, id]);
+
+    if (!result.rows.length) return res.status(404).json({ error: "Usuario no encontrado." });
+    return res.json({ ok: true, user: result.rows[0] });
+  } catch (error) {
+    console.error("Admin premium:", error.message);
+    return res.status(500).json({ error: "No se pudo actualizar Premium." });
+  }
+});
+
 // ADMIN: consultar suscripciones y usuarios con su estado de pago
 router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, username, payer_email, mp_subscription_id,
+      SELECT id, username, payer_email, mp_subscription_id, admin_premium_until,
              subscription_status, subscription_expires_at,
              free_downloads_used, created_at
       FROM users
@@ -219,8 +302,11 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
     `);
     const users = result.rows.map(user => ({
       ...user,
-      subscription_active: user.subscription_status === 'authorized' &&
-        (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date())
+      subscription_active: (user.admin_premium_until && new Date(user.admin_premium_until) > new Date()) ||
+        (user.subscription_status === 'authorized' &&
+        (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date())),
+      premium_source: user.admin_premium_until && new Date(user.admin_premium_until) > new Date()
+        ? 'admin' : user.subscription_status === 'authorized' ? 'mercadopago' : null
     }));
     res.json({
       ok: true,
