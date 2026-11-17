@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import jwt from "jsonwebtoken";
 import { validateVideoUrl } from "./platforms.js";
 import { pool } from "./db.js";
+import { logAdminEvent } from "./events.js";
 
 const router = Router();
 const API_BASE = "https://knightvision.ai/api/v1/partner";
@@ -287,6 +288,13 @@ router.post("/", async (req, res) => {
       ON CONFLICT(provider_download_id) DO NOTHING
     `, [String(data.download_id), req.user.id, reservation.paid]);
 
+    await logAdminEvent({
+      type: "download_requested", category: "downloads", userId: req.user.id,
+      username: req.user.username,
+      details: `Plataforma: ${String(data.platform || "unknown").toLowerCase()}.`,
+      notify: false
+    });
+
     return res.status(202).json({
       ok: true,
       freeDownloadsRemaining: reservation.remaining,
@@ -297,6 +305,10 @@ router.post("/", async (req, res) => {
     });
 
   } catch (error) {
+    if (req.user) await logAdminEvent({
+      type: "download_failed", category: "security", userId: req.user.id,
+      username: req.user.username, details: "El proveedor no pudo iniciar la descarga."
+    });
     console.error(
       "Start download:",
       error.stack || error.message
@@ -484,6 +496,12 @@ router.get("/:id/file/:idx", async (req, res) => {
         "INSERT INTO downloads (platform) VALUES ($1)",
         [platform]
       );
+
+      await logAdminEvent({
+        type: "download_completed", category: "downloads", userId: req.user.id,
+        username: req.user.username,
+        details: `Plataforma: ${platform}. ID: ${id}.`
+      });
 
     } catch (dbError) {
       console.error(

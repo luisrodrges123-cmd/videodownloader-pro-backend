@@ -10,6 +10,7 @@ import payments from "./payments.js";
 import auth, { initAuthDb } from "./auth.js";
 import { initDb } from "./db.js";
 import { notFound, errorHandler } from "./errors.js";
+import { startAdminAlertWorker } from "./events.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -62,6 +63,7 @@ async function startServer() {
     // Primero crear/migrar users; después las tablas que dependen de users.
     await initAuthDb();
     await initDb();
+    startAdminAlertWorker();
 
     console.log("PostgreSQL conectado y tablas listas.");
 

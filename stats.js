@@ -2,6 +2,7 @@ import { Router } from "express";
 import { timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { pool } from "./db.js";
+import { eventTitle, logAdminEvent, sendWhatsAppTemplate, whatsappConfiguration } from "./events.js";
 
 const router = Router();
 
@@ -182,6 +183,137 @@ router.get("/admin", requireAdmin, async (_req, res) => {
   }
 });
 
+// Gráficas y registro de actividad del panel.
+router.get("/admin/activity", requireAdmin, async (req, res) => {
+  try {
+    const days = [7, 30, 90].includes(Number(req.query.days)) ? Number(req.query.days) : 30;
+    const timezone = process.env.APP_TIMEZONE || "America/Chihuahua";
+    const [series, events] = await Promise.all([
+      pool.query(`
+        SELECT to_char(d.day::date, 'YYYY-MM-DD') AS day,
+          COUNT(e.id) FILTER (WHERE e.category='users')::int AS users,
+          COUNT(e.id) FILTER (WHERE e.event_type='download_completed')::int AS downloads,
+          COUNT(e.id) FILTER (WHERE e.category='premium')::int AS premium,
+          COUNT(e.id) FILTER (WHERE e.category='payments')::int AS payments,
+          COUNT(e.id) FILTER (WHERE e.category='security')::int AS security,
+          COUNT(e.id)::int AS events
+        FROM generate_series(
+          (NOW() AT TIME ZONE $2)::date - ($1::int - 1),
+          (NOW() AT TIME ZONE $2)::date,
+          INTERVAL '1 day'
+        ) AS d(day)
+        LEFT JOIN admin_events e ON (e.created_at AT TIME ZONE $2)::date=d.day::date
+        GROUP BY d.day ORDER BY d.day
+      `, [days, timezone]),
+      pool.query(`
+        SELECT e.id, e.event_type, e.category, e.username, e.details, e.created_at,
+               COALESCE(o.state, 'solo_registro') AS delivery_state,
+               o.last_error
+        FROM admin_events e
+        LEFT JOIN admin_alert_outbox o ON o.event_id=e.id
+        ORDER BY e.created_at DESC
+        LIMIT 150
+      `)
+    ]);
+    res.json({ ok: true, days, series: series.rows, events: events.rows });
+  } catch (error) {
+    console.error("Admin activity:", error.message);
+    res.status(500).json({ error: "No se pudo consultar la actividad." });
+  }
+});
+
+// Estado y preferencias del bot. Los secretos nunca salen del servidor.
+router.get("/admin/bot", requireAdmin, async (_req, res) => {
+  try {
+    const [settings, counts] = await Promise.all([
+      pool.query(`SELECT enabled, alert_users, alert_downloads, alert_premium, alert_payments, alert_security, updated_at FROM admin_bot_settings WHERE singleton=TRUE`),
+      pool.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE state='pending')::int AS pending,
+          COUNT(*) FILTER (WHERE state='failed')::int AS failed,
+          COUNT(*) FILTER (WHERE state='sent' AND sent_at >= NOW()-INTERVAL '24 hours')::int AS sent_24h,
+          MAX(sent_at) AS last_sent_at
+        FROM admin_alert_outbox
+      `)
+    ]);
+    res.json({ ok: true, settings: settings.rows[0], queue: counts.rows[0], whatsapp: whatsappConfiguration() });
+  } catch (error) {
+    console.error("Admin bot status:", error.message);
+    res.status(500).json({ error: "No se pudo consultar el bot." });
+  }
+});
+
+router.put("/admin/bot", requireAdmin, async (req, res) => {
+  try {
+    const values = ["enabled", "alert_users", "alert_downloads", "alert_premium", "alert_payments", "alert_security"].map(key => req.body?.[key]);
+    if (values.some(value => typeof value !== "boolean")) {
+      return res.status(400).json({ error: "Selecciona un valor para cada opción del bot." });
+    }
+    if (values[0] && !whatsappConfiguration().ready) {
+      return res.status(503).json({ error: `Configura primero en Render: ${whatsappConfiguration().missing.join(", ")}.` });
+    }
+    const result = await pool.query(`
+      UPDATE admin_bot_settings
+      SET enabled=$1, alert_users=$2, alert_downloads=$3, alert_premium=$4,
+          alert_payments=$5, alert_security=$6, updated_at=NOW()
+      WHERE singleton=TRUE
+      RETURNING enabled, alert_users, alert_downloads, alert_premium, alert_payments, alert_security, updated_at
+    `, values);
+    await logAdminEvent({
+      type: "bot_settings_changed", category: "security", username: "Administrador",
+      details: `Bot ${values[0] ? "activado" : "pausado"}; se actualizaron sus categorías de alerta.`
+    });
+    res.json({ ok: true, settings: result.rows[0], whatsapp: whatsappConfiguration() });
+  } catch (error) {
+    console.error("Admin bot save:", error.message);
+    res.status(500).json({ error: "No se pudieron guardar las opciones del bot." });
+  }
+});
+
+router.post("/admin/bot/test", requireAdmin, async (_req, res) => {
+  const config = whatsappConfiguration();
+  if (!config.ready) {
+    return res.status(503).json({ error: `Configura en Render: ${config.missing.join(", ")}.` });
+  }
+  const eventId = await logAdminEvent({
+    type: "bot_test", category: "security", username: "Administrador",
+    details: "Mensaje de prueba solicitado desde el panel.", notify: false
+  });
+  try {
+    await sendWhatsAppTemplate({ title: eventTitle("bot_test"), username: "Administrador", details: "El bot de alertas de VideoDownloader Pro está conectado." });
+    if (eventId) await pool.query(`
+      INSERT INTO admin_alert_outbox (event_id,state,attempts,last_attempt_at,sent_at)
+      VALUES ($1,'sent',1,NOW(),NOW()) ON CONFLICT (event_id) DO NOTHING
+    `, [eventId]);
+    res.json({ ok: true, eventId, message: "Mensaje de prueba enviado." });
+  } catch (error) {
+    if (eventId) await pool.query(`
+      INSERT INTO admin_alert_outbox (event_id,state,attempts,last_attempt_at,last_error)
+      VALUES ($1,'failed',1,NOW(),$2) ON CONFLICT (event_id) DO NOTHING
+    `, [eventId, String(error.message).slice(0, 700)]).catch(() => {});
+    console.error("WhatsApp test:", error.message);
+    res.status(502).json({ error: `No se pudo enviar la prueba: ${error.message}` });
+  }
+});
+
+router.post("/admin/bot/retry", requireAdmin, async (_req, res) => {
+  try {
+    if (!whatsappConfiguration().ready) {
+      return res.status(503).json({ error: "Configura WhatsApp en Render antes de reintentar." });
+    }
+    const settings = await pool.query("SELECT enabled FROM admin_bot_settings WHERE singleton=TRUE");
+    if (!settings.rows[0]?.enabled) return res.status(409).json({ error: "Activa el bot para reintentar alertas." });
+    const result = await pool.query(`
+      UPDATE admin_alert_outbox SET state='pending', attempts=0, next_attempt_at=NOW(), last_error=NULL, updated_at=NOW()
+      WHERE state='failed' RETURNING id
+    `);
+    res.json({ ok: true, retried: result.rowCount });
+  } catch (error) {
+    console.error("WhatsApp retry:", error.message);
+    res.status(500).json({ error: "No se pudieron reintentar las alertas." });
+  }
+});
+
 // Consultar usuarios
 router.get("/admin/users", requireAdmin, async (_req, res) => {
   try {
@@ -243,6 +375,15 @@ router.post("/admin/users", requireAdmin, async (req, res) => {
                 (admin_premium_until > NOW()) AS admin_premium_active
     `, [username, passwordHash, premium, months]);
 
+    await logAdminEvent({
+      type: "admin_user_created", category: "users", userId: result.rows[0].id,
+      username, details: premium ? `Cuenta creada con Premium por ${months} meses.` : "Cuenta creada desde administración."
+    });
+    if (premium) await logAdminEvent({
+      type: "premium_activated", category: "premium", userId: result.rows[0].id,
+      username, details: `Premium activado durante ${months} meses al crear la cuenta.`
+    });
+
     return res.status(201).json({ ok: true, user: result.rows[0] });
   } catch (error) {
     if (error.code === "23505") {
@@ -279,6 +420,11 @@ router.patch("/admin/users/:id/premium", requireAdmin, async (req, res) => {
     `, [active, months, id]);
 
     if (!result.rows.length) return res.status(404).json({ error: "Usuario no encontrado." });
+    await logAdminEvent({
+      type: active ? "premium_activated" : "premium_revoked", category: "premium",
+      userId: result.rows[0].id, username: result.rows[0].username,
+      details: active ? `Premium activado durante ${months} meses.` : "Premium retirado por administración."
+    });
     return res.json({ ok: true, user: result.rows[0] });
   } catch (error) {
     console.error("Admin premium:", error.message);
@@ -346,6 +492,12 @@ router.patch("/admin/users/:id/block", requireAdmin, async (req, res) => {
         error: "Usuario no encontrado."
       });
     }
+
+    await logAdminEvent({
+      type: blocked ? "user_blocked" : "user_unblocked", category: "security",
+      userId: result.rows[0].id, username: result.rows[0].username,
+      details: blocked ? "Cuenta bloqueada desde administración." : "Cuenta desbloqueada desde administración."
+    });
 
     res.json({
       ok: true,
@@ -415,6 +567,11 @@ router.put("/admin/settings", requireAdmin, async (req, res) => {
         updated_at = NOW()
     `, [freeMode, maintenanceMode]);
 
+    await logAdminEvent({
+      type: "system_settings_changed", category: "security", username: "Administrador",
+      details: `Modo gratuito: ${freeMode ? "activo" : "inactivo"}; mantenimiento: ${maintenanceMode ? "activo" : "inactivo"}.`
+    });
+
     res.json({
       ok: true,
       settings: { freeMode, maintenanceMode }
@@ -482,6 +639,11 @@ router.post("/admin/messages", requireAdmin, async (req, res) => {
       data.display,
       data.active
     ]);
+
+    await logAdminEvent({
+      type: "admin_notice_published", category: "security", username: "Administrador",
+      details: `Aviso publicado: ${result.rows[0].title}.`
+    });
 
     res.status(201).json({
       ok: true,
@@ -556,6 +718,11 @@ router.patch("/admin/messages/:id", requireAdmin, async (req, res) => {
       id
     ]);
 
+    await logAdminEvent({
+      type: "admin_notice_updated", category: "security", username: "Administrador",
+      details: `Aviso actualizado: ${result.rows[0].title}.`
+    });
+
     res.json({
       ok: true,
       message: result.rows[0]
@@ -591,6 +758,11 @@ router.delete("/admin/messages/:id", requireAdmin, async (req, res) => {
         error: "Mensaje no encontrado."
       });
     }
+
+    await logAdminEvent({
+      type: "admin_notice_deleted", category: "security", username: "Administrador",
+      details: `Aviso eliminado. ID: ${result.rows[0].id}.`
+    });
 
     res.json({
       ok: true,

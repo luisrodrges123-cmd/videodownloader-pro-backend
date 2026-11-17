@@ -362,6 +362,21 @@ td{color:#d9e5f5}
 .create-premium-options input[type=checkbox]{width:auto;accent-color:var(--green)}
 .user-actions{display:flex;gap:6px;flex-wrap:wrap}
 .user-actions .btn{padding:8px 10px;font-size:11px}
+.activity-chart-wrap{height:280px;position:relative}
+#activityChart{width:100%;height:100%;display:block}
+.activity-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.activity-toolbar select{width:auto;min-width:112px;padding:9px 11px}
+.bot-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0}
+.bot-status .pill{padding:7px 11px}
+.bot-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin:16px 0}
+.bot-check{display:flex;align-items:center;gap:9px;color:#d9e5f5;font-size:12px}
+.bot-check input{width:auto;accent-color:#54d7e8}
+.bot-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:16px}
+.template-help{background:#0b1727;border:1px solid var(--line);border-radius:12px;padding:13px;color:var(--muted);font-size:11px;line-height:1.65;margin-top:14px}
+.template-help code{color:#a8f5d2}
+.series-legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;color:var(--muted);font-size:11px}
+.series-legend span{display:inline-flex;align-items:center;gap:6px}
+.series-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
 .toast{
   position:fixed;
   right:20px;
@@ -443,6 +458,7 @@ td{color:#d9e5f5}
 }
 @media(max-width:700px){
   .create-user-form{grid-template-columns:1fr}
+  .bot-checks{grid-template-columns:1fr}
   .app{display:block}
   .sidebar{
     padding:12px;
@@ -496,6 +512,7 @@ td{color:#d9e5f5}
       <a class="nav-item" data-page="platforms"><span class="ico">◈</span>Plataformas</a>
       <a class="nav-item" data-page="users"><span class="ico">♙</span>Usuarios</a>
       <a class="nav-item" data-page="subscriptions"><span class="ico">✦</span>Suscripciones</a>
+      <a class="nav-item" data-page="bot"><span class="ico">◉</span>Alertas y bot</a>
       <a class="nav-item" data-page="messages"><span class="ico">✉</span>Mensajes</a>
       <a class="nav-item" data-page="settings"><span class="ico">⚙</span>Configuración</a>
     </nav>
@@ -688,6 +705,74 @@ td{color:#d9e5f5}
   </section>
 </div>
 
+<!-- ACTIVIDAD Y BOT DE WHATSAPP -->
+<div class="section-page" id="page-bot">
+  <div class="cards" style="margin-bottom:16px">
+    <article class="card"><div class="card-head">Eventos en el periodo <span class="card-icon">▤</span></div><div class="metric" id="activityTotal">—</div><div class="metric-note">Actividad registrada</div></article>
+    <article class="card"><div class="card-head">Usuarios nuevos <span class="card-icon">♙</span></div><div class="metric" id="activityUsers">—</div><div class="metric-note">Registros y cuentas creadas</div></article>
+    <article class="card"><div class="card-head">Descargas completas <span class="card-icon">⇩</span></div><div class="metric" id="activityDownloads">—</div><div class="metric-note">Entregadas a usuarios</div></article>
+    <article class="card"><div class="card-head">Alertas pendientes <span class="card-icon">◷</span></div><div class="metric" id="botPending">—</div><div class="metric-note">En espera de WhatsApp</div></article>
+  </div>
+
+  <div class="content-grid">
+    <section class="panel">
+      <div class="panel-title">
+        <h2>Actividad y registros</h2>
+        <div class="activity-toolbar">
+          <select id="activityDays" aria-label="Periodo de actividad"><option value="7">7 días</option><option value="30" selected>30 días</option><option value="90">90 días</option></select>
+          <button class="btn" id="activityRefreshBtn">↻ Actualizar</button>
+        </div>
+      </div>
+      <div class="activity-chart-wrap"><canvas id="activityChart" aria-label="Gráfica de eventos por día"></canvas></div>
+      <div class="series-legend">
+        <span><i style="background:#54d7e8"></i>Usuarios</span>
+        <span><i style="background:#7c8cff"></i>Descargas</span>
+        <span><i style="background:#4de0a5"></i>Premium</span>
+        <span><i style="background:#ffc96b"></i>Pagos</span>
+        <span><i style="background:#ff778b"></i>Seguridad y panel</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title"><h2>Bot de WhatsApp</h2><span>Alertas privadas para el administrador</span></div>
+      <div class="bot-status"><span class="pill orange" id="whatsappStatus">Consultando configuración…</span><span class="muted" id="whatsappRecipient"></span></div>
+      <div class="toolbar-note" id="whatsappConfigMessage">Las credenciales se guardan en el servidor y no se muestran aquí.</div>
+      <div class="toolbar-note" id="botQueueSummary"></div>
+
+      <form id="botOptionsForm">
+        <div class="setting-row">
+          <div><h3>Bot activo</h3><p>Pausa o reanuda los avisos automáticos.</p></div>
+          <label class="switch"><input type="checkbox" id="botEnabled"><span class="slider"></span></label>
+        </div>
+        <h3 style="margin:20px 0 4px">Qué avisos enviar</h3>
+        <div class="bot-checks">
+          <label class="bot-check"><input type="checkbox" id="botUsers"> Nuevos usuarios y cuentas creadas</label>
+          <label class="bot-check"><input type="checkbox" id="botDownloads"> Descargas completadas</label>
+          <label class="bot-check"><input type="checkbox" id="botPremium"> Premium activado o retirado</label>
+          <label class="bot-check"><input type="checkbox" id="botPayments"> Suscripciones y pagos</label>
+          <label class="bot-check"><input type="checkbox" id="botSecurity"> Inicios de sesión, bloqueos y cambios del panel</label>
+        </div>
+        <div class="bot-actions">
+          <button class="btn primary" id="saveBotOptionsBtn" type="submit">Guardar opciones</button>
+          <button class="btn" id="sendBotTestBtn" type="button">Enviar prueba</button>
+          <button class="btn" id="retryBotAlertsBtn" type="button">Reintentar fallidas</button>
+        </div>
+      </form>
+      <div class="template-help">
+        Requiere WhatsApp Business Cloud API y una plantilla aprobada llamada <code>admin_activity_alert</code> en <code>es_MX</code> con 4 variables: evento, usuario, detalle y fecha. Agrega las claves privadas en Render; luego envía la prueba desde aquí.
+      </div>
+    </section>
+  </div>
+
+  <section class="panel table-panel">
+    <div class="panel-title"><h2>Registro de eventos y entregas</h2><span>Últimos 150 eventos</span></div>
+    <div class="table-wrap"><table style="min-width:900px">
+      <thead><tr><th>Fecha</th><th>Evento</th><th>Usuario</th><th>Detalle</th><th>WhatsApp</th></tr></thead>
+      <tbody id="activityTable"><tr><td colspan="5" class="empty">Abre esta sección para cargar la actividad.</td></tr></tbody>
+    </table></div>
+  </section>
+</div>
+
 <!-- MENSAJES -->
 <div class="section-page" id="page-messages">
 
@@ -818,6 +903,8 @@ let platformData=[];
 let users=[];
 let subscriptions=[];
 let messages=[];
+let activitySeries=[];
+let whatsappReady=false;
 let editingMessageId=null;
 let settings={freeMode:true,maintenanceMode:false};
 
@@ -907,6 +994,135 @@ function drawRows(){
         <td>${safe(r.download_id||r.downloadId||r.id||"—")}</td>
       </tr>`).join("")
     :'<tr><td colspan="3" class="empty">No hay registros que coincidan.</td></tr>';
+}
+
+async function loadActivity(){
+  const d=await api(`/activity?days=${encodeURIComponent($("activityDays").value)}`);
+  activitySeries=Array.isArray(d.series)?d.series:[];
+  const totals={users:0,downloads:0,premium:0,payments:0,security:0,events:0};
+  activitySeries.forEach(day=>Object.keys(totals).forEach(key=>totals[key]+=Number(day[key]||0)));
+  $("activityTotal").textContent=fmt(totals.events);
+  $("activityUsers").textContent=fmt(totals.users);
+  $("activityDownloads").textContent=fmt(totals.downloads);
+  drawActivityChart();
+  drawActivityEvents(d.events||[]);
+}
+
+function drawActivityChart(){
+  const canvas=$("activityChart");
+  if(!canvas)return;
+  const rect=canvas.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  const ratio=window.devicePixelRatio||1;
+  canvas.width=Math.round(rect.width*ratio);
+  canvas.height=Math.round(rect.height*ratio);
+  const ctx=canvas.getContext("2d");
+  ctx.setTransform(ratio,0,0,ratio,0,0);
+  const w=rect.width,h=rect.height,left=38,right=10,top=12,bottom=28;
+  const plotW=w-left-right,plotH=h-top-bottom;
+  const keys=["users","downloads","premium","payments","security"];
+  const colors={users:"#54d7e8",downloads:"#7c8cff",premium:"#4de0a5",payments:"#ffc96b",security:"#ff778b"};
+  const maxValue=Math.max(1,...activitySeries.flatMap(day=>keys.map(key=>Number(day[key]||0))));
+  ctx.clearRect(0,0,w,h);
+  ctx.font="10px system-ui";
+  ctx.textBaseline="middle";
+  for(let i=0;i<=4;i++){
+    const y=top+plotH*i/4;
+    ctx.strokeStyle="rgba(143,163,191,.17)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(w-right,y);ctx.stroke();
+    ctx.fillStyle="#8298b5";ctx.textAlign="right";
+    ctx.fillText(String(Math.round(maxValue*(4-i)/4)),left-8,y);
+  }
+  keys.forEach(key=>{
+    ctx.beginPath();ctx.strokeStyle=colors[key];ctx.lineWidth=2;ctx.lineJoin="round";ctx.lineCap="round";
+    activitySeries.forEach((day,i)=>{
+      const x=left+(activitySeries.length<=1?plotW/2:i*plotW/(activitySeries.length-1));
+      const y=top+plotH-(Number(day[key]||0)/maxValue)*plotH;
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  });
+  if(activitySeries.length){
+    const marks=[0,Math.floor((activitySeries.length-1)/2),activitySeries.length-1];
+    ctx.fillStyle="#8298b5";ctx.textAlign="center";
+    [...new Set(marks)].forEach(i=>{
+      const x=left+(activitySeries.length<=1?plotW/2:i*plotW/(activitySeries.length-1));
+      const label=String(activitySeries[i].day||"").slice(5);
+      ctx.fillText(label,x,h-10);
+    });
+  }
+}
+
+function drawActivityEvents(events){
+  const labels={
+    user_registered:"Registro",admin_user_created:"Cuenta creada",login_succeeded:"Inicio de sesión",
+    login_failed:"Acceso fallido",download_requested:"Descarga solicitada",download_completed:"Descarga completada",download_failed:"Error de descarga",
+    premium_activated:"Premium activado",premium_revoked:"Premium retirado",user_blocked:"Usuario bloqueado",
+    user_unblocked:"Usuario desbloqueado",system_settings_changed:"Configuración del sistema",bot_settings_changed:"Opciones del bot actualizadas",
+    admin_notice_published:"Aviso publicado",admin_notice_updated:"Aviso actualizado",admin_notice_deleted:"Aviso eliminado",
+    subscription_started:"Suscripción iniciada",payment_error:"Error de pago",
+    subscription_changed:"Suscripción actualizada",subscription_cancelled:"Suscripción cancelada",bot_test:"Prueba del bot"
+  };
+  const deliveries={sent:["Enviado","green"],pending:["En cola","orange"],sending:["Enviando","orange"],failed:["Falló","red"],cancelled:["Pausado","orange"],solo_registro:["Solo registro",""]};
+  $("activityTable").innerHTML=events.length?events.map(event=>{
+    const [delivery,color]=deliveries[event.delivery_state]||[event.delivery_state||"—",""];
+    return `<tr><td>${safe(date(event.created_at))}</td><td><span class="pill">${safe(labels[event.event_type]||event.event_type)}</span></td><td>${safe(event.username||"—")}</td><td>${safe(event.details||"—")}</td><td><span class="pill ${color}" title="${safe(event.last_error||"")}">${safe(delivery)}</span></td></tr>`;
+  }).join(""):'<tr><td colspan="5" class="empty">Aún no hay actividad registrada.</td></tr>';
+}
+
+async function loadBotSettings(){
+  const d=await api("/bot");
+  const s=d.settings||{};
+  $("botEnabled").checked=Boolean(s.enabled);
+  $("botUsers").checked=Boolean(s.alert_users);
+  $("botDownloads").checked=Boolean(s.alert_downloads);
+  $("botPremium").checked=Boolean(s.alert_premium);
+  $("botPayments").checked=Boolean(s.alert_payments);
+  $("botSecurity").checked=Boolean(s.alert_security);
+  const ready=Boolean(d.whatsapp?.ready);
+  whatsappReady=ready;
+  $("whatsappStatus").textContent=ready?"WhatsApp configurado":"Falta configurar WhatsApp";
+  $("whatsappStatus").className=`pill ${ready?"green":"orange"}`;
+  $("whatsappRecipient").textContent=ready?`Destino: ${d.whatsapp.recipient}`:"";
+  $("whatsappConfigMessage").textContent=ready
+    ?"Credenciales privadas detectadas en el servidor. El mensaje de prueba confirma la plantilla y el destinatario."
+    :`Agrega en Render: ${(d.whatsapp?.missing||[]).join(", ")}. Los secretos no se muestran en el panel.`;
+  const q=d.queue||{};
+  $("botPending").textContent=fmt(q.pending);
+  $("botQueueSummary").textContent=`En cola: ${fmt(q.pending)} · Fallidas: ${fmt(q.failed)} · Enviadas últimas 24 h: ${fmt(q.sent_24h)} · Último envío: ${date(q.last_sent_at)}`;
+  $("sendBotTestBtn").disabled=!ready;
+  $("retryBotAlertsBtn").disabled=!ready||!s.enabled||!Number(q.failed);
+}
+
+async function saveBotOptions(e){
+  e.preventDefault();
+  const button=$("saveBotOptionsBtn");button.disabled=true;
+  try{
+    await api("/bot",{method:"PUT",body:JSON.stringify({
+      enabled:$("botEnabled").checked,
+      alert_users:$("botUsers").checked,
+      alert_downloads:$("botDownloads").checked,
+      alert_premium:$("botPremium").checked,
+      alert_payments:$("botPayments").checked,
+      alert_security:$("botSecurity").checked
+    })});
+    await loadBotSettings();
+    toast("Opciones del bot guardadas.");
+  }catch(error){toast(error.message);}
+  finally{button.disabled=false;}
+}
+
+async function sendBotTest(){
+  const button=$("sendBotTestBtn");button.disabled=true;
+  try{const d=await api("/bot/test",{method:"POST",body:JSON.stringify({})});toast(d.message||"Prueba enviada.");await loadBotSettings();await loadActivity();}
+  catch(error){toast(error.message);}
+  finally{button.disabled=!whatsappReady;}
+}
+
+async function retryBotAlerts(){
+  const button=$("retryBotAlertsBtn");button.disabled=true;
+  try{const d=await api("/bot/retry",{method:"POST",body:JSON.stringify({})});toast(`Alertas reencoladas: ${fmt(d.retried)}.`);await loadBotSettings();}
+  catch(error){toast(error.message);await loadBotSettings().catch(()=>{});}
 }
 
 async function load(){
@@ -1448,6 +1664,12 @@ $("search").addEventListener("input",drawRows);
 
 $("saveSettingsBtn").addEventListener("click",saveSettings);
 $("loadSettingsBtn").addEventListener("click",loadSettings);
+$("botOptionsForm").addEventListener("submit",saveBotOptions);
+$("activityDays").addEventListener("change",()=>loadActivity().catch(e=>toast(e.message)));
+$("activityRefreshBtn").addEventListener("click",()=>Promise.all([loadActivity(),loadBotSettings()]).catch(e=>toast(e.message)));
+$("sendBotTestBtn").addEventListener("click",sendBotTest);
+$("retryBotAlertsBtn").addEventListener("click",retryBotAlerts);
+window.addEventListener("resize",()=>{if($("page-bot").classList.contains("active"))drawActivityChart();});
 
 $("publishMessageBtn").addEventListener("click",publishMessage);
 $("refreshMessagesBtn").addEventListener("click",loadMessages);
@@ -1489,6 +1711,7 @@ const titles={
   platforms:"Plataformas",
   users:"Usuarios registrados",
   subscriptions:"Suscripciones",
+  bot:"Alertas y bot",
   messages:"Mensajes del administrador",
   settings:"Configuración"
 };
@@ -1510,6 +1733,7 @@ document.querySelectorAll(".nav-item").forEach(a=>{
 
     if(a.dataset.page==="users")loadUsers();
     if(a.dataset.page==="subscriptions")loadSubscriptions();
+    if(a.dataset.page==="bot")Promise.all([loadActivity(),loadBotSettings()]).catch(e=>toast(e.message));
     if(a.dataset.page==="settings")loadSettings();
     if(a.dataset.page==="messages")loadMessages();
   });

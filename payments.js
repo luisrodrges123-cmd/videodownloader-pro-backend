@@ -2,6 +2,7 @@ import { Router } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { requiredAuth } from "./auth.js";
 import { pool } from "./db.js";
+import { logAdminEvent } from "./events.js";
 
 const router = Router();
 const PRICE = 29;
@@ -79,12 +80,20 @@ router.post("/subscribe", requiredAuth, async (req, res) => {
 
     await pool.query("UPDATE users SET payer_email=$1, mp_subscription_id=$2 WHERE id=$3",
       [email, preference.id, req.user.id]);
+    await logAdminEvent({
+      type: "subscription_started", category: "payments", userId: req.user.id,
+      username: req.user.username, details: "Se inició la suscripción mensual de VDownloader Pro."
+    });
 
     return res.status(201).json({
       ok:true, initPoint: preference.init_point, subscriptionId: preference.id,
       price: PRICE, currency: CURRENCY
     });
   } catch (error) {
+    await logAdminEvent({
+      type: "payment_error", category: "payments", userId: req.user?.id,
+      username: req.user?.username, details: "No se pudo iniciar una suscripción de Mercado Pago."
+    });
     console.error("Create Mercado Pago subscription:", error.message);
     return res.status(502).json({ ok:false, error:"No se pudo iniciar la suscripción. Revisa la configuración de Mercado Pago." });
   }
@@ -181,6 +190,13 @@ router.post("/webhook", async (req, res) => {
       WHERE id=$5
     `, [String(sub.id), sub.payer_email || null, status, expiry, userId]);
 
+    const account = await pool.query("SELECT username FROM users WHERE id=$1", [userId]);
+    await logAdminEvent({
+      type: "subscription_changed", category: "payments", userId,
+      username: account.rows[0]?.username,
+      details: `Estado de suscripción actualizado: ${status}.`
+    });
+
     return res.sendStatus(200);
   } catch (error) {
     console.error("Mercado Pago webhook:", error.message);
@@ -197,6 +213,10 @@ router.post("/cancel", requiredAuth, async (req, res) => {
       method:"PUT", body:JSON.stringify({status:"cancelled"})
     });
     await pool.query("UPDATE users SET subscription_status=$1 WHERE id=$2", [sub.status || "cancelled", req.user.id]);
+    await logAdminEvent({
+      type: "subscription_cancelled", category: "payments", userId: req.user.id,
+      username: req.user.username, details: "El usuario canceló su suscripción de Mercado Pago."
+    });
     return res.json({ok:true, status:sub.status});
   } catch (error) {
     console.error("Cancel subscription:", error.message);

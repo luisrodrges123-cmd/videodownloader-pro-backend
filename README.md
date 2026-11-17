@@ -44,4 +44,21 @@ const API_BASE = "https://TU-SERVICIO.onrender.com";
 ```
 Configura `ALLOWED_ORIGINS` en Render con el dominio donde alojes el HTML. `*` sirve para pruebas, no es recomendable para producción.
 
+## Alertas, gráficas y bot de WhatsApp
+
+El panel `admin-pro.html` incluye la sección **Alertas y bot**. Registra altas, inicios de sesión, descargas solicitadas/completadas, cambios Premium, suscripciones y bloqueos; muestra tendencias de 7, 30 o 90 días y mantiene una cola de alertas con reintentos.
+
+Para habilitar WhatsApp Cloud API, crea una plantilla de utilidad aprobada en WhatsApp Manager. Usa el nombre `admin_activity_alert`, idioma `es_MX` y un cuerpo con cuatro variables:
+
+```text
+Alerta de VideoDownloader Pro: {{1}}
+Usuario: {{2}}
+Detalle: {{3}}
+Fecha: {{4}}
+```
+
+En Render, agrega como variables privadas `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TO` (teléfono destinatario con código de país), `WHATSAPP_TEMPLATE_NAME=admin_activity_alert` y `WHATSAPP_TEMPLATE_LANGUAGE=es_MX`. `WHATSAPP_GRAPH_API_VERSION` y `APP_TIMEZONE` son opcionales. No coloques el token en el HTML ni en GitHub.
+
+Después del despliegue, abre **Alertas y bot**, elige los tipos de actividad, activa el bot y usa **Enviar prueba**. Si una alerta falla, aparece en el registro; el bot reintenta automáticamente y el botón **Reintentar fallidas** vuelve a poner en cola las que agotaron reintentos. Las claves de Cloud API y el destinatario se leen solo desde el servidor. WhatsApp Cloud API envía plantillas con un nombre, idioma y parámetros desde el endpoint de mensajes de Meta ([referencia oficial](https://developers.facebook.com/documentation/business-messaging/whatsapp/overview)).
+
 El historial actual sigue guardándose en el navegador. No pongas claves secretas en el HTML; guárdalas como variables de entorno en Render.

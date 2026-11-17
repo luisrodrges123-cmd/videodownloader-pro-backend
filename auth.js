@@ -3,6 +3,7 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { pool } from "./db.js";
+import { logAdminEvent } from "./events.js";
 
 const router = express.Router();
 
@@ -132,6 +133,10 @@ router.post("/register", async (req, res) => {
     );
 
     const user = result.rows[0];
+    await logAdminEvent({
+      type: "user_registered", category: "users", userId: user.id,
+      username: user.username, details: "Registro desde la página pública."
+    });
 
     const token = jwt.sign(
       { id: user.id },
@@ -176,6 +181,10 @@ router.post("/login", async (req, res) => {
     );
 
     if (!result.rows.length) {
+      await logAdminEvent({
+        type: "login_failed", category: "security", username,
+        details: "Nombre de usuario no encontrado."
+      });
       return res.status(401).json({
         error: "Usuario o contraseña incorrectos"
       });
@@ -189,6 +198,11 @@ router.post("/login", async (req, res) => {
     );
 
     if (!valid || user.is_blocked) {
+      await logAdminEvent({
+        type: "login_failed", category: "security", userId: user.id,
+        username: user.username,
+        details: user.is_blocked ? "Intento de acceso a cuenta bloqueada." : "Contraseña incorrecta."
+      });
       return res.status(401).json({
         error: "Usuario o contraseña incorrectos, o cuenta bloqueada"
       });
@@ -199,6 +213,11 @@ router.post("/login", async (req, res) => {
       getSecret(),
       { expiresIn: "7d" }
     );
+
+    await logAdminEvent({
+      type: "login_succeeded", category: "security", userId: user.id,
+      username: user.username, details: "Inicio de sesión correcto."
+    });
 
     return res.json({
       message: "Sesión iniciada",
