@@ -1367,7 +1367,7 @@ function subscriptionLabel(u){
   const status=String(u.subscription_status||"none").toLowerCase();
   if(u.premium_source==="admin"&&u.subscription_active)return ['Premium admin','green'];
   if(u.subscription_active)return ['Activa','green'];
-  if(status==="pending")return ['Pendiente','orange'];
+  if(status==="pending"||u.latest_payment_status==="pending_payment")return ['Pago pendiente','orange'];
   if(status==="cancelled"||status==="canceled")return ['Cancelada','red'];
   if(status==="paused")return ['Pausada','orange'];
   if(status==="authorized")return ['Vencida','red'];
