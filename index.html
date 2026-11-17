@@ -662,11 +662,13 @@ footer{color:#73839b;margin-top:60px}
       <h2>⭐ VDownloader Pro</h2>
       <strong style="color:var(--cyan)">$29 MXN / mes</strong>
     </div>
-    <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar la suscripción mensual automática.</p>
-    <label for="subscriptionEmail">Correo para Mercado Pago</label>
+    <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar Premium por 30 días.</p>
+    <label for="subscriptionEmail">Correo electrónico</label>
     <input id="subscriptionEmail" type="email" autocomplete="email" placeholder="tu-correo@ejemplo.com" required>
-    <button class="btn primary wide" id="subscribeButton" onclick="startSubscription()">Activar suscripción mensual</button>
-    <p class="muted">Cobro recurrente automático con tarjeta mediante Mercado Pago. Puedes cancelar la suscripción.</p>
+    <label for="subscriptionPhone">Teléfono con lada de país</label>
+    <input id="subscriptionPhone" type="tel" autocomplete="tel" placeholder="+526691234567" required>
+    <button class="btn primary wide" id="subscribeButton" onclick="startSubscription()">Pagar $29 MXN con Conekta</button>
+    <p class="muted">Acepta tarjeta y SPEI según los métodos habilitados en Conekta. El acceso dura 30 días; la renovación se realiza manualmente.</p>
   </div>
 </section>
 
@@ -1844,41 +1846,47 @@ async function startSubscription() {
     return;
   }
   const emailInput = document.getElementById("subscriptionEmail");
+  const phoneInput = document.getElementById("subscriptionPhone");
   const email = String(emailInput?.value || "").trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showStatus("Correo inválido", "Escribe un correo válido para continuar con Mercado Pago.", 0);
+  const phone = String(phoneInput?.value || "").trim();
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) {
+    showStatus("Correo inválido", "Escribe un correo válido para continuar con Conekta.", 0);
     emailInput?.focus();
+    return;
+  }
+  if (!/^\\+?\\d{10,15}$/.test(phone.replace(/[\\s()-]/g, ""))) {
+    showStatus("Teléfono inválido", "Incluye la lada del país, por ejemplo +526691234567.", 0);
+    phoneInput?.focus();
     return;
   }
   const button = document.getElementById("subscribeButton");
   if (button) {
     button.disabled = true;
-    button.textContent = "Conectando con Mercado Pago...";
+    button.textContent = "Creando orden segura...";
   }
   try {
-    const response = await fetch(API + "/api/payments/subscribe", {
+    const response = await fetch(API + "/api/payments/checkout", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: "Bearer " + token
       },
-      body: JSON.stringify({ payer_email: email })
+      body: JSON.stringify({ email, phone })
     });
     const data = await response.json();
-    if (!response.ok || !data.ok || !data.initPoint) {
-      throw new Error(data.error || "No se pudo iniciar la suscripción.");
+    if (!response.ok || !data.ok || !data.checkoutUrl) {
+      throw new Error(data.error || "No se pudo iniciar el pago.");
     }
-    location.href = data.initPoint;
+    location.href = data.checkoutUrl;
   } catch (error) {
     showStatus("No se pudo iniciar el pago", error.message, 0);
     if (button) {
       button.disabled = false;
-      button.textContent = "Activar suscripción mensual";
+      button.textContent = "Pagar $29 MXN con Conekta";
     }
   }
 }
 
-// ========================================
 // EVENTOS
 // ========================================
 
@@ -1900,8 +1908,12 @@ updateAccount();
 
 checkSession();
 refreshSubscriptionStatus();
-if (new URLSearchParams(location.search).get("subscription") === "return") {
-  setTimeout(refreshSubscriptionStatus, 1500);
+const paymentReturn = new URLSearchParams(location.search).get("payment");
+if (paymentReturn === "return") {
+  showStatus("Estamos verificando tu pago", "Premium se activará cuando Conekta confirme el pago. Si elegiste SPEI, puede tardar en reflejarse.", 50);
+  setTimeout(refreshSubscriptionStatus, 2500);
+} else if (paymentReturn === "failed") {
+  showStatus("Pago no completado", "Puedes volver a intentarlo cuando quieras.", 0);
 }
 loadPublicSettings();
 loadPublicMessages();
