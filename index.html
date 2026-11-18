@@ -451,6 +451,16 @@ input[readonly]{color:var(--muted);cursor:default}
   line-height:1.5;
 }
 
+.vdp-chat-toggle{position:fixed;right:20px;bottom:20px;z-index:1000;border:1px solid #4f83ff;border-radius:999px;background:linear-gradient(130deg,#347aff,#24b8dc);color:#fff;padding:13px 18px;font-weight:800;box-shadow:0 12px 35px #0008;cursor:pointer}
+.vdp-chat-panel{position:fixed;right:20px;bottom:82px;z-index:1001;width:min(365px,calc(100vw - 24px));height:min(520px,calc(100vh - 120px));display:none;flex-direction:column;overflow:hidden;border:1px solid var(--line);border-radius:20px;background:#0d1728;box-shadow:0 20px 60px #000a}
+.vdp-chat-panel.open{display:flex}.vdp-chat-head{display:flex;justify-content:space-between;align-items:center;padding:15px 16px;background:#14243b;border-bottom:1px solid var(--line)}
+.vdp-chat-head strong{display:block}.vdp-chat-head small{color:var(--muted)}.vdp-chat-close{border:0;background:transparent;color:var(--text);font-size:24px;cursor:pointer}
+.vdp-chat-messages{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px}.vdp-chat-bubble{max-width:88%;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px 12px;border-radius:14px;line-height:1.45;font-size:14px}
+.vdp-chat-bubble.assistant{align-self:flex-start;background:#1a2940;color:#eef4ff;border-bottom-left-radius:4px}.vdp-chat-bubble.user{align-self:flex-end;background:#347aff;color:#fff;border-bottom-right-radius:4px}
+.vdp-chat-form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--line)}.vdp-chat-form textarea{min-width:0;flex:1;resize:none;min-height:44px;max-height:100px;padding:10px;border:1px solid var(--line);border-radius:11px;background:#08101e;color:var(--text);font:inherit}
+.vdp-chat-form button{border:0;border-radius:11px;padding:0 13px;background:var(--blue);color:#fff;font-weight:800;cursor:pointer}.vdp-chat-form button:disabled{opacity:.6;cursor:wait}
+@media(max-width:520px){.vdp-chat-toggle{right:12px;bottom:12px}.vdp-chat-panel{right:12px;bottom:72px}}
+
 .access-info{
   display:none;
   text-align:center;
@@ -659,6 +669,20 @@ footer{color:#73839b;margin-top:60px}
 
 </main>
 
+<aside class="vdp-chat-panel" id="vdpChatPanel" aria-label="Asistente VDownloader" aria-hidden="true">
+  <div class="vdp-chat-head">
+    <div><strong>🐺 Asistente VDownloader</strong><small>Ayuda con descargas y Premium</small></div>
+    <button class="vdp-chat-close" id="vdpChatClose" type="button" aria-label="Cerrar chat">×</button>
+  </div>
+  <div class="vdp-chat-messages" id="vdpChatMessages" aria-live="polite">
+    <div class="vdp-chat-bubble assistant">¡Hola! Soy el asistente de VDownloader Pro. ¿En qué te ayudo?</div>
+  </div>
+  <form class="vdp-chat-form" id="vdpChatForm">
+    <textarea id="vdpChatInput" maxlength="1000" rows="1" placeholder="Escribe tu pregunta…" aria-label="Escribe tu pregunta" required></textarea>
+    <button id="vdpChatSend" type="submit">Enviar</button>
+  </form>
+</aside>
+<button class="vdp-chat-toggle" id="vdpChatToggle" type="button" aria-expanded="false" aria-controls="vdpChatPanel">🐺 Ayuda</button>
 
 <section class="section" id="subscriptionPanel" style="display:none">
   <div class="card">
@@ -1850,6 +1874,62 @@ function openPaymentPage() {
   }
   window.location.assign("./payment.html");
 }
+
+const vdpChatPanel = document.getElementById("vdpChatPanel");
+const vdpChatMessages = document.getElementById("vdpChatMessages");
+const vdpChatInput = document.getElementById("vdpChatInput");
+const vdpChatForm = document.getElementById("vdpChatForm");
+const vdpChatSend = document.getElementById("vdpChatSend");
+const vdpChatHistory = [];
+
+function toggleVdpChat(open) {
+  const shouldOpen = typeof open === "boolean" ? open : !vdpChatPanel.classList.contains("open");
+  vdpChatPanel.classList.toggle("open", shouldOpen);
+  vdpChatPanel.setAttribute("aria-hidden", String(!shouldOpen));
+  document.getElementById("vdpChatToggle").setAttribute("aria-expanded", String(shouldOpen));
+  if (shouldOpen) vdpChatInput.focus();
+}
+
+function addVdpChatBubble(role, text) {
+  const bubble = document.createElement("div");
+  bubble.className = "vdp-chat-bubble " + role;
+  bubble.textContent = text;
+  vdpChatMessages.appendChild(bubble);
+  vdpChatMessages.scrollTop = vdpChatMessages.scrollHeight;
+  return bubble;
+}
+
+document.getElementById("vdpChatToggle").addEventListener("click", () => toggleVdpChat());
+document.getElementById("vdpChatClose").addEventListener("click", () => toggleVdpChat(false));
+vdpChatForm.addEventListener("submit", async event => {
+  event.preventDefault();
+  const message = vdpChatInput.value.trim();
+  if (!message) return;
+  addVdpChatBubble("user", message);
+  vdpChatHistory.push({ role: "user", text: message });
+  vdpChatInput.value = "";
+  vdpChatSend.disabled = true;
+  vdpChatSend.textContent = "…";
+  const waiting = addVdpChatBubble("assistant", "Estoy pensando…");
+  try {
+    const response = await fetch(API + "/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, history: vdpChatHistory.slice(0, -1) })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "No pude responder ahora.");
+    waiting.textContent = data.answer;
+    vdpChatHistory.push({ role: "assistant", text: data.answer });
+    vdpChatMessages.scrollTop = vdpChatMessages.scrollHeight;
+  } catch (error) {
+    waiting.textContent = error.message;
+  } finally {
+    vdpChatSend.disabled = false;
+    vdpChatSend.textContent = "Enviar";
+    vdpChatInput.focus();
+  }
+});
 
 // EVENTOS
 // ========================================

@@ -7,6 +7,7 @@ import analyze from "./analyze.js";
 import download from "./download.js";
 import stats from "./stats.js";
 import payments from "./payments.js";
+import chat from "./chat.js";
 import auth, { initAuthDb } from "./auth.js";
 import { initDb } from "./db.js";
 import { notFound, errorHandler } from "./errors.js";
@@ -61,6 +62,7 @@ app.use("/api/analyze", analyze);
 app.use("/api/download", download);
 app.use("/api/stats", stats);
 app.use("/api/payments", payments);
+app.use("/api/chat", chat);
 
 app.use(notFound);
 app.use(errorHandler);

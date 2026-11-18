@@ -63,6 +63,10 @@ Después del despliegue, abre **Alertas y bot**, elige los tipos de actividad, a
 
 El historial actual sigue guardándose en el navegador. No pongas claves secretas en el HTML; guárdalas como variables de entorno en Render.
 
+## Asistente web
+
+`index.html` incluye el chat **Asistente VDownloader**, adaptado del flujo conversacional del bot de VENTASLOBOSTORE. El backend atiende `POST /api/chat` y llama a Gemini 3.8 Flash. En Render agrega `GEMINI_API_KEY` como secreto; `GEMINI_MODEL` es opcional. La clave nunca se entrega al navegador. El asistente responde preguntas generales de uso, descargas y Premium; no puede consultar datos privados ni confirmar pagos.
+
 
 ## Conekta: Checkout integrado
 
