@@ -664,16 +664,15 @@ footer{color:#73839b;margin-top:60px}
   <div class="card">
     <div class="section-head">
       <h2>⭐ VDownloader Pro</h2>
-      <strong style="color:var(--cyan)">$29 MXN / mes</strong>
+      <strong style="color:var(--cyan)">$29 MXN / 30 días</strong>
     </div>
     <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar Premium.</p>
     <label for="subscriptionEmail">Correo para el pago</label>
     <input id="subscriptionEmail" type="email" autocomplete="email" placeholder="tu-correo@ejemplo.com" required>
     <div class="payment-actions">
-      <button class="btn primary wide" id="subscribeButton" onclick="startSubscription()">Suscripción automática con Mercado Pago</button>
       <button class="btn wide" id="conektaButton" onclick="startConektaPayment()" style="display:none">Pagar 30 días con Conekta</button>
     </div>
-    <p class="muted">Mercado Pago cobra automáticamente cada mes. Conekta cobra una sola vez $29 MXN por 30 días; la renovación es manual.</p>
+    <p class="muted">Pago único con Conekta: $29 MXN por 30 días de Premium. La renovación es manual.</p>
     <p class="muted" id="conektaStatus" role="status"></p>
     <div class="conekta-checkout" id="conektaCheckoutWrap" style="display:none">
       <h3>Pago seguro con Conekta</h3>
@@ -1831,7 +1830,6 @@ async function refreshSubscriptionStatus() {
     }
     if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo consultar el límite.");
     if (panel) panel.style.display = "block";
-    const button = document.getElementById("subscribeButton");
     const conektaButton = document.getElementById("conektaButton");
     if (conektaButton) conektaButton.style.display = data.conektaEnabled ? "block" : "none";
     if (data.subscriptionActive) {
@@ -1839,18 +1837,10 @@ async function refreshSubscriptionStatus() {
         const expiry = data.subscriptionExpiresAt ? " hasta " + new Date(data.subscriptionExpiresAt).toLocaleDateString("es-MX") : "";
         info.textContent = "VDownloader Pro está activo" + expiry + ". Tienes descargas ilimitadas.";
       }
-      if (button) {
-        button.textContent = data.premiumSource === "mercadopago" ? "Suscripción de Mercado Pago activa" : "Premium activo";
-        button.disabled = true;
-      }
       if (conektaButton) conektaButton.disabled = true;
     } else {
       const remaining = Number(data.freeDownloadsRemaining ?? 0);
       if (info) info.textContent = "Te quedan " + remaining + " de 5 descargas gratis. Después puedes activar Pro.";
-      if (button) {
-        button.textContent = "Suscripción automática con Mercado Pago";
-        button.disabled = false;
-      }
       if (conektaButton) {
         conektaButton.disabled = !data.conektaEnabled;
         conektaButton.textContent = "Pagar 30 días con Conekta · $" + data.price + " MXN";
@@ -1871,42 +1861,6 @@ function subscriptionEmail() {
     return "";
   }
   return email;
-}
-
-async function startSubscription() {
-  if (!token) {
-    openModal("login");
-    showStatus("Inicia sesión", "Necesitas una cuenta para activar Pro.", 0);
-    return;
-  }
-  const email = subscriptionEmail();
-  if (!email) return;
-  const button = document.getElementById("subscribeButton");
-  if (button) {
-    button.disabled = true;
-    button.textContent = "Conectando con Mercado Pago...";
-  }
-  try {
-    const response = await fetch(API + "/api/payments/subscribe", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token
-      },
-      body: JSON.stringify({ payer_email: email })
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok || !data.initPoint) {
-      throw new Error(data.error || "No se pudo iniciar la suscripción.");
-    }
-    location.href = data.initPoint;
-  } catch (error) {
-    showStatus("No se pudo iniciar el pago", error.message, 0);
-    if (button) {
-      button.disabled = false;
-      button.textContent = "Suscripción automática con Mercado Pago";
-    }
-  }
 }
 
 function loadConektaCheckout() {
@@ -2035,9 +1989,6 @@ updateAccount();
 
 checkSession();
 refreshSubscriptionStatus();
-if (new URLSearchParams(location.search).get("subscription") === "return") {
-  setTimeout(refreshSubscriptionStatus, 1500);
-}
 loadPublicSettings();
 loadPublicMessages();
 

@@ -66,6 +66,6 @@ El historial actual sigue guardándose en el navegador. No pongas claves secreta
 
 ## Conekta: Checkout integrado
 
-La página ofrece Conekta como pago único de $29 MXN por 30 días de Premium; no se renueva automáticamente. Mercado Pago conserva su suscripción mensual automática. La llave privada de Conekta se usa solo en el servidor; el Checkout integrado envía los datos de pago directamente a Conekta. La cuenta se activa únicamente después de confirmar la orden con la API y/o recibir un webhook order.paid verificado.
+La página ofrece únicamente Conekta para nuevas compras: un pago único de $29 MXN por 30 días de Premium, sin renovación automática. El endpoint de inicio de suscripción de Mercado Pago está desactivado. Se conserva la sincronización y cancelación de suscripciones antiguas que ya estuvieran activas. La llave privada de Conekta se usa solo en el servidor; el Checkout integrado envía los datos de pago directamente a Conekta. La cuenta se activa únicamente después de confirmar la orden con la API y/o recibir un webhook order.paid verificado.
 
 En Render agrega CONEKTA_PRIVATE_KEY (llave privada como secreto), CONEKTA_PUBLIC_KEY (llave pública) y CONEKTA_WEBHOOK_PUBLIC_KEY (PEM público de verificación de webhooks). Registra en Conekta el endpoint https://videodownloader-pro-api.onrender.com/api/payments/conekta/webhook para el evento order.paid. El Checkout usa checkout.id y se monta dentro de la página.

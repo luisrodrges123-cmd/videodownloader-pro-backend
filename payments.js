@@ -245,55 +245,11 @@ router.post("/conekta/webhook", async (req, res) => {
   }
 });
 
-router.post("/subscribe", requiredAuth, async (req, res) => {
-  try {
-    const email = String(req.body?.payer_email || "").trim().toLowerCase();
-    if (!validEmail(email)) return res.status(400).json({ ok:false, error:"Escribe un correo electrónico válido." });
-
-    const existing = await pool.query(
-      `SELECT subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1`, [req.user.id]
-    );
-    const existingUser = existing.rows[0];
-    const existingPremium = existingUser?.admin_premium_until && new Date(existingUser.admin_premium_until) > new Date() ||
-      existingUser?.conekta_premium_until && new Date(existingUser.conekta_premium_until) > new Date() ||
-      existingUser?.subscription_status === "authorized" &&
-      (!existingUser.subscription_expires_at || new Date(existingUser.subscription_expires_at) > new Date());
-    if (existingPremium) return res.status(409).json({ ok:false, error:"Tu cuenta ya tiene Premium activo." });
-
-    const preference = await mpRequest("/preapproval", {
-      method: "POST",
-      body: JSON.stringify({
-        reason: "VDownloader Pro - suscripción mensual",
-        external_reference: `vdp_user_${req.user.id}`,
-        payer_email: email,
-        auto_recurring: {
-          frequency: 1, frequency_type: "months",
-          transaction_amount: PRICE, currency_id: CURRENCY
-        },
-        back_url: `${APP_URL}?subscription=return`,
-        status: "pending"
-      })
-    });
-
-    await pool.query("UPDATE users SET payer_email=$1, mp_subscription_id=$2 WHERE id=$3",
-      [email, preference.id, req.user.id]);
-    await logAdminEvent({
-      type: "subscription_started", category: "payments", userId: req.user.id,
-      username: req.user.username, details: "Se inició la suscripción mensual de VDownloader Pro."
-    });
-
-    return res.status(201).json({
-      ok:true, initPoint: preference.init_point, subscriptionId: preference.id,
-      price: PRICE, currency: CURRENCY
-    });
-  } catch (error) {
-    await logAdminEvent({
-      type: "payment_error", category: "payments", userId: req.user?.id,
-      username: req.user?.username, details: "No se pudo iniciar una suscripción de Mercado Pago."
-    });
-    console.error("Create Mercado Pago subscription:", error.message);
-    return res.status(502).json({ ok:false, error:"No se pudo iniciar la suscripción. Revisa la configuración de Mercado Pago." });
-  }
+router.post("/subscribe", requiredAuth, (_req, res) => {
+  return res.status(410).json({
+    ok: false,
+    error: "Las nuevas suscripciones se procesan únicamente con Conekta."
+  });
 });
 
 router.get("/status", requiredAuth, async (req, res) => {
