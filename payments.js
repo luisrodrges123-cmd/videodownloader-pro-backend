@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual, verify as verifySignature } from "node:crypto";
 import { requiredAuth } from "./auth.js";
 import { pool } from "./db.js";
 import { logAdminEvent } from "./events.js";
@@ -7,6 +7,8 @@ import { logAdminEvent } from "./events.js";
 const router = Router();
 const PRICE = 29;
 const CURRENCY = "MXN";
+const CONEKTA_AMOUNT = PRICE * 100;
+const PREMIUM_DAYS = 30;
 const APP_URL = process.env.PUBLIC_APP_URL || "https://luisrodrges123-cmd.github.io/videodownloader-pro-backend/";
 
 function mpHeaders() {
@@ -25,6 +27,106 @@ function validEmail(value) {
   return typeof value === "string" && value.length <= 254 &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
+function conektaHeaders() {
+  const key = String(process.env.CONEKTA_PRIVATE_KEY || "").trim();
+  if (!key) throw new Error("Falta CONEKTA_PRIVATE_KEY en Render.");
+  return {
+    Authorization: "Bearer " + key,
+    Accept: "application/vnd.conekta-v2.3.0+json",
+    "Accept-Language": "es",
+    "Content-Type": "application/json"
+  };
+}
+
+async function conektaRequest(path, options = {}) {
+  const response = await fetch("https://api.conekta.io" + path, {
+    ...options,
+    headers: { ...conektaHeaders(), ...(options.headers || {}) },
+    signal: AbortSignal.timeout(20000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = data.details?.[0]?.message || data.message || data.error || "Conekta respondió " + response.status;
+    throw new Error(String(detail).slice(0, 300));
+  }
+  return data;
+}
+
+function verifyConektaWebhook(req) {
+  const pem = String(process.env.CONEKTA_WEBHOOK_PUBLIC_KEY || "").trim().replace(/\\n/g, "\n");
+  const digest = String(req.get("digest") || "").trim();
+  if (!pem || !digest || !Buffer.isBuffer(req.rawBody)) return false;
+  try {
+    return verifySignature("RSA-SHA256", req.rawBody, pem, Buffer.from(digest, "base64"));
+  } catch {
+    return false;
+  }
+}
+
+async function settleConektaOrder(orderId) {
+  const stored = await pool.query(
+    "SELECT order_id, user_id, expected_amount, currency, status FROM conekta_order_payments WHERE order_id=$1",
+    [orderId]
+  );
+  if (!stored.rowCount) return { status: "unrecognized" };
+  const payment = stored.rows[0];
+  const order = await conektaRequest("/orders/" + encodeURIComponent(orderId));
+  const actualAmount = Number(order.amount ?? order.total);
+  if (order.id !== orderId || order.currency !== payment.currency || actualAmount !== Number(payment.expected_amount)) {
+    throw new Error("La orden de Conekta no coincide con el importe esperado.");
+  }
+  if (order.metadata?.user_id && String(order.metadata.user_id) !== String(payment.user_id)) {
+    throw new Error("La orden de Conekta no pertenece a esta cuenta.");
+  }
+  if (String(order.payment_status || "").toLowerCase() !== "paid") {
+    return { status: String(order.payment_status || payment.status || "pending").toLowerCase() };
+  }
+
+  const client = await pool.connect();
+  let activated = false;
+  let expiresAt = null;
+  try {
+    await client.query("BEGIN");
+    const locked = await client.query(
+      "SELECT status, user_id FROM conekta_order_payments WHERE order_id=$1 FOR UPDATE",
+      [orderId]
+    );
+    if (!locked.rowCount || Number(locked.rows[0].user_id) !== Number(payment.user_id)) {
+      await client.query("ROLLBACK");
+      return { status: "unrecognized" };
+    }
+    if (locked.rows[0].status !== "paid") {
+      const updated = await client.query(
+        "UPDATE users SET conekta_premium_until=GREATEST(COALESCE(conekta_premium_until,NOW()),NOW()) + ($1::text || ' days')::interval WHERE id=$2 RETURNING conekta_premium_until",
+        [PREMIUM_DAYS, payment.user_id]
+      );
+      if (!updated.rowCount) throw new Error("No se encontró la cuenta asociada al pago.");
+      expiresAt = updated.rows[0].conekta_premium_until;
+      await client.query("UPDATE conekta_order_payments SET status='paid', paid_at=NOW() WHERE order_id=$1", [orderId]);
+      activated = true;
+    } else {
+      const current = await client.query("SELECT conekta_premium_until FROM users WHERE id=$1", [payment.user_id]);
+      expiresAt = current.rows[0]?.conekta_premium_until || null;
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
+
+  if (activated) {
+    const user = await pool.query("SELECT username FROM users WHERE id=$1", [payment.user_id]);
+    await logAdminEvent({
+      type: "subscription_changed", category: "payments", userId: payment.user_id,
+      username: user.rows[0]?.username,
+      details: "Premium de Conekta activado por " + PREMIUM_DAYS + " días."
+    });
+  }
+  return { status: "paid", conektaPremiumUntil: expiresAt };
+}
+
 function verifyWebhook(req) {
   const secret = process.env.MP_WEBHOOK_SECRET;
   const signature = req.get("x-signature") || "";
@@ -47,21 +149,116 @@ function verifyWebhook(req) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+router.post("/conekta/order", requiredAuth, async (req, res) => {
+  try {
+    const privateKey = String(process.env.CONEKTA_PRIVATE_KEY || "").trim();
+    const publicKey = String(process.env.CONEKTA_PUBLIC_KEY || "").trim();
+    const webhookPublicKey = String(process.env.CONEKTA_WEBHOOK_PUBLIC_KEY || "").trim();
+    if (!privateKey || !publicKey || !webhookPublicKey) {
+      return res.status(503).json({ ok: false, error: "Configura las llaves privada, pública y pública de webhooks de Conekta en Render." });
+    }
+    const email = String(req.body?.payer_email || "").trim().toLowerCase();
+    if (!validEmail(email)) return res.status(400).json({ ok: false, error: "Escribe un correo electrónico válido." });
+
+    const current = await pool.query(
+      "SELECT subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1",
+      [req.user.id]
+    );
+    const user = current.rows[0];
+    if (!user) return res.status(404).json({ ok: false, error: "Cuenta no encontrada." });
+    const now = Date.now();
+    const premiumActive = (user.admin_premium_until && new Date(user.admin_premium_until).getTime() > now) ||
+      (user.conekta_premium_until && new Date(user.conekta_premium_until).getTime() > now) ||
+      (user.subscription_status === "authorized" &&
+        (!user.subscription_expires_at || new Date(user.subscription_expires_at).getTime() > now));
+    if (premiumActive) return res.status(409).json({ ok: false, error: "Tu cuenta ya tiene Premium activo." });
+
+    const order = await conektaRequest("/orders", {
+      method: "POST",
+      headers: { "Idempotency-Key": randomUUID() },
+      body: JSON.stringify({
+        currency: CURRENCY,
+        customer_info: { name: String(req.user.display_name || req.user.username).slice(0, 100), email },
+        line_items: [{
+          name: "VDownloader Pro - 30 días",
+          description: "Acceso Premium durante 30 días. Renovación manual.",
+          unit_price: CONEKTA_AMOUNT,
+          quantity: 1
+        }],
+        checkout: { type: "Integration", name: "VDownloader Pro" },
+        metadata: { user_id: String(req.user.id), product: "premium_30_days" }
+      })
+    });
+    if (!order.id || !order.checkout?.id) throw new Error("Conekta no devolvió el identificador del Checkout.");
+
+    await pool.query(
+      "INSERT INTO conekta_order_payments (order_id, checkout_id, user_id, expected_amount, currency) VALUES ($1,$2,$3,$4,$5)",
+      [String(order.id), String(order.checkout.id), req.user.id, CONEKTA_AMOUNT, CURRENCY]
+    );
+    await pool.query("UPDATE users SET payer_email=$1 WHERE id=$2", [email, req.user.id]);
+    await logAdminEvent({
+      type: "subscription_started", category: "payments", userId: req.user.id,
+      username: req.user.username, details: "Se inició un pago único de Premium por 30 días con Conekta."
+    });
+    return res.status(201).json({
+      ok: true, orderId: String(order.id), checkoutRequestId: String(order.checkout.id),
+      publicKey, amount: PRICE, currency: CURRENCY, days: PREMIUM_DAYS
+    });
+  } catch (error) {
+    await logAdminEvent({
+      type: "payment_error", category: "payments", userId: req.user?.id,
+      username: req.user?.username, details: "No se pudo iniciar el Checkout de Conekta."
+    });
+    console.error("Create Conekta order:", error.message);
+    return res.status(502).json({ ok: false, error: "No se pudo iniciar el pago con Conekta. Revisa las llaves y los métodos habilitados." });
+  }
+});
+
+router.post("/conekta/orders/:orderId/verify", requiredAuth, async (req, res) => {
+  try {
+    const orderId = String(req.params.orderId || "");
+    if (!/^ord_[A-Za-z0-9]+$/.test(orderId)) return res.status(400).json({ ok: false, error: "Orden inválida." });
+    const owned = await pool.query("SELECT user_id FROM conekta_order_payments WHERE order_id=$1", [orderId]);
+    if (!owned.rowCount || Number(owned.rows[0].user_id) !== Number(req.user.id)) {
+      return res.status(404).json({ ok: false, error: "No se encontró esa orden." });
+    }
+    const result = await settleConektaOrder(orderId);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    console.error("Verify Conekta order:", error.message);
+    return res.status(502).json({ ok: false, error: "No se pudo confirmar el pago. Intenta de nuevo en un momento." });
+  }
+});
+
+router.post("/conekta/webhook", async (req, res) => {
+  if (!verifyConektaWebhook(req)) return res.status(401).json({ ok: false, error: "Firma de Conekta inválida." });
+  try {
+    const event = req.body || {};
+    if (event.type !== "order.paid") return res.sendStatus(200);
+    const orderId = String(event.data?.object?.id || "");
+    if (!/^ord_[A-Za-z0-9]+$/.test(orderId)) return res.sendStatus(200);
+    await settleConektaOrder(orderId);
+    return res.sendStatus(200);
+  } catch (error) {
+    console.error("Conekta webhook:", error.message);
+    return res.status(500).json({ ok: false });
+  }
+});
+
 router.post("/subscribe", requiredAuth, async (req, res) => {
   try {
     const email = String(req.body?.payer_email || "").trim().toLowerCase();
     if (!validEmail(email)) return res.status(400).json({ ok:false, error:"Escribe un correo electrónico válido." });
 
     const existing = await pool.query(
-      `SELECT subscription_status, subscription_expires_at, admin_premium_until FROM users WHERE id=$1`, [req.user.id]
+      `SELECT subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1`, [req.user.id]
     );
-    if (existing.rows[0]?.admin_premium_until && new Date(existing.rows[0].admin_premium_until) > new Date()) {
-      return res.status(409).json({ ok:false, error:"Tu cuenta ya tiene Premium activo." });
-    }
-    if (existing.rows[0]?.subscription_status === "authorized" &&
-        (!existing.rows[0].subscription_expires_at || new Date(existing.rows[0].subscription_expires_at) > new Date())) {
-      return res.status(409).json({ ok:false, error:"Tu suscripción ya está activa." });
-    }
+    const existingUser = existing.rows[0];
+    const existingPremium = existingUser?.admin_premium_until && new Date(existingUser.admin_premium_until) > new Date() ||
+      existingUser?.conekta_premium_until && new Date(existingUser.conekta_premium_until) > new Date() ||
+      existingUser?.subscription_status === "authorized" &&
+      (!existingUser.subscription_expires_at || new Date(existingUser.subscription_expires_at) > new Date());
+    if (existingPremium) return res.status(409).json({ ok:false, error:"Tu cuenta ya tiene Premium activo." });
 
     const preference = await mpRequest("/preapproval", {
       method: "POST",
@@ -105,7 +302,7 @@ router.get("/status", requiredAuth, async (req, res) => {
     // Así no dependemos exclusivamente del tiempo de entrega del webhook.
     const result = await pool.query(`
       SELECT free_downloads_used, payer_email, mp_subscription_id, admin_premium_until,
-             subscription_status, subscription_expires_at
+             subscription_status, subscription_expires_at, conekta_premium_until
       FROM users WHERE id=$1
     `, [req.user.id]);
     const u = result.rows[0];
@@ -137,16 +334,22 @@ router.get("/status", requiredAuth, async (req, res) => {
       }
     }
 
-    const adminPremiumActive = u.admin_premium_until && new Date(u.admin_premium_until) > new Date();
-    const active = Boolean(adminPremiumActive) || (status === "authorized" &&
-      (!expiresAt || new Date(expiresAt) > new Date()));
+    const now = new Date();
+    const adminPremiumActive = u.admin_premium_until && new Date(u.admin_premium_until) > now;
+    const conektaPremiumActive = u.conekta_premium_until && new Date(u.conekta_premium_until) > now;
+    const mpPremiumActive = status === "authorized" && (!expiresAt || new Date(expiresAt) > now);
+    const active = Boolean(adminPremiumActive || conektaPremiumActive || mpPremiumActive);
+    const premiumSource = adminPremiumActive ? "admin" : mpPremiumActive ? "mercadopago" : conektaPremiumActive ? "conekta" : null;
+    const premiumExpiresAt = adminPremiumActive ? u.admin_premium_until :
+      mpPremiumActive ? expiresAt : conektaPremiumActive ? u.conekta_premium_until : expiresAt;
     return res.json({
       ok:true, freeDownloadsUsed:u.free_downloads_used,
       freeDownloadsRemaining:active ? null : Math.max(0,5-u.free_downloads_used),
-      subscriptionActive:active, subscriptionStatus:adminPremiumActive ? "admin" : status,
-      premiumSource:adminPremiumActive ? "admin" : status === "authorized" ? "mercadopago" : null,
-      adminPremiumUntil:u.admin_premium_until,
-      subscriptionExpiresAt:expiresAt, price:PRICE, currency:CURRENCY
+      subscriptionActive:active, subscriptionStatus:adminPremiumActive ? "admin" : conektaPremiumActive && !mpPremiumActive ? "conekta" : status,
+      premiumSource, adminPremiumUntil:u.admin_premium_until,
+      conektaPremiumUntil:u.conekta_premium_until,
+      subscriptionExpiresAt:premiumExpiresAt, price:PRICE, currency:CURRENCY,
+      conektaEnabled:Boolean(process.env.CONEKTA_PRIVATE_KEY && process.env.CONEKTA_PUBLIC_KEY && process.env.CONEKTA_WEBHOOK_PUBLIC_KEY)
     });
   } catch (error) {
     console.error("Subscription status:", error.message);

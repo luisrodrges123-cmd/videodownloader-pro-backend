@@ -383,6 +383,10 @@ input[readonly]{color:var(--muted);cursor:default}
 }
 .account span{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+.payment-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-top:14px}
+.conekta-checkout{margin-top:20px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+.conekta-checkout h3{margin:0 0 6px}
+#conektaCheckoutFrame{min-height:520px;height:714px;background:#fff;border-radius:12px;overflow:hidden}
 /* Avisos */
 
 .notice-area{
@@ -662,11 +666,20 @@ footer{color:#73839b;margin-top:60px}
       <h2>⭐ VDownloader Pro</h2>
       <strong style="color:var(--cyan)">$29 MXN / mes</strong>
     </div>
-    <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar la suscripción mensual automática.</p>
-    <label for="subscriptionEmail">Correo para Mercado Pago</label>
+    <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar Premium.</p>
+    <label for="subscriptionEmail">Correo para el pago</label>
     <input id="subscriptionEmail" type="email" autocomplete="email" placeholder="tu-correo@ejemplo.com" required>
-    <button class="btn primary wide" id="subscribeButton" onclick="startSubscription()">Activar suscripción mensual</button>
-    <p class="muted">Cobro recurrente automático con tarjeta mediante Mercado Pago. Puedes cancelar la suscripción.</p>
+    <div class="payment-actions">
+      <button class="btn primary wide" id="subscribeButton" onclick="startSubscription()">Suscripción automática con Mercado Pago</button>
+      <button class="btn wide" id="conektaButton" onclick="startConektaPayment()" style="display:none">Pagar 30 días con Conekta</button>
+    </div>
+    <p class="muted">Mercado Pago cobra automáticamente cada mes. Conekta cobra una sola vez $29 MXN por 30 días; la renovación es manual.</p>
+    <p class="muted" id="conektaStatus" role="status"></p>
+    <div class="conekta-checkout" id="conektaCheckoutWrap" style="display:none">
+      <h3>Pago seguro con Conekta</h3>
+      <p class="muted">Los datos de pago se envían directamente a Conekta.</p>
+      <div id="conektaCheckoutFrame"></div>
+    </div>
   </div>
 </section>
 
@@ -1794,6 +1807,8 @@ function safeFilename(name) {
 // SUSCRIPCIÓN Y LÍMITE GRATUITO
 // ========================================
 
+let conektaCheckoutOrderId = "";
+
 async function refreshSubscriptionStatus() {
   const panel = document.getElementById("subscriptionPanel");
   const info = document.getElementById("subscriptionInfo");
@@ -1817,18 +1832,28 @@ async function refreshSubscriptionStatus() {
     if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo consultar el límite.");
     if (panel) panel.style.display = "block";
     const button = document.getElementById("subscribeButton");
+    const conektaButton = document.getElementById("conektaButton");
+    if (conektaButton) conektaButton.style.display = data.conektaEnabled ? "block" : "none";
     if (data.subscriptionActive) {
-      if (info) info.textContent = "VDownloader Pro está activo. Tienes descargas ilimitadas.";
+      if (info) {
+        const expiry = data.subscriptionExpiresAt ? " hasta " + new Date(data.subscriptionExpiresAt).toLocaleDateString("es-MX") : "";
+        info.textContent = "VDownloader Pro está activo" + expiry + ". Tienes descargas ilimitadas.";
+      }
       if (button) {
-        button.textContent = "Suscripción activa";
+        button.textContent = data.premiumSource === "mercadopago" ? "Suscripción de Mercado Pago activa" : "Premium activo";
         button.disabled = true;
       }
+      if (conektaButton) conektaButton.disabled = true;
     } else {
       const remaining = Number(data.freeDownloadsRemaining ?? 0);
-      if (info) info.textContent = `Te quedan ${remaining} de 5 descargas gratis. Después necesitas Pro por $29 MXN al mes.`;
+      if (info) info.textContent = "Te quedan " + remaining + " de 5 descargas gratis. Después puedes activar Pro.";
       if (button) {
-        button.textContent = "Activar suscripción mensual";
+        button.textContent = "Suscripción automática con Mercado Pago";
         button.disabled = false;
+      }
+      if (conektaButton) {
+        conektaButton.disabled = !data.conektaEnabled;
+        conektaButton.textContent = "Pagar 30 días con Conekta · $" + data.price + " MXN";
       }
     }
   } catch (error) {
@@ -1837,19 +1862,25 @@ async function refreshSubscriptionStatus() {
   }
 }
 
+function subscriptionEmail() {
+  const emailInput = document.getElementById("subscriptionEmail");
+  const email = String(emailInput?.value || "").trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showStatus("Correo inválido", "Escribe un correo válido para continuar.", 0);
+    emailInput?.focus();
+    return "";
+  }
+  return email;
+}
+
 async function startSubscription() {
   if (!token) {
     openModal("login");
     showStatus("Inicia sesión", "Necesitas una cuenta para activar Pro.", 0);
     return;
   }
-  const emailInput = document.getElementById("subscriptionEmail");
-  const email = String(emailInput?.value || "").trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showStatus("Correo inválido", "Escribe un correo válido para continuar con Mercado Pago.", 0);
-    emailInput?.focus();
-    return;
-  }
+  const email = subscriptionEmail();
+  if (!email) return;
   const button = document.getElementById("subscribeButton");
   if (button) {
     button.disabled = true;
@@ -1873,12 +1904,116 @@ async function startSubscription() {
     showStatus("No se pudo iniciar el pago", error.message, 0);
     if (button) {
       button.disabled = false;
-      button.textContent = "Activar suscripción mensual";
+      button.textContent = "Suscripción automática con Mercado Pago";
     }
   }
 }
 
-// ========================================
+function loadConektaCheckout() {
+  if (window.ConektaCheckoutComponents) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://pay.conekta.com/v1.0/js/conekta-checkout.min.js";
+    script.crossOrigin = "anonymous";
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("No se pudo cargar el checkout de Conekta."));
+    document.head.appendChild(script);
+  });
+}
+
+async function startConektaPayment() {
+  if (!token) {
+    openModal("login");
+    showStatus("Inicia sesión", "Necesitas una cuenta para pagar Premium.", 0);
+    return;
+  }
+  const email = subscriptionEmail();
+  if (!email) return;
+  const button = document.getElementById("conektaButton");
+  const status = document.getElementById("conektaStatus");
+  button.disabled = true;
+  button.textContent = "Preparando pago...";
+  if (status) status.textContent = "";
+  try {
+    const response = await fetch(API + "/api/payments/conekta/order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + token
+      },
+      body: JSON.stringify({ payer_email: email })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok || !data.checkoutRequestId || !data.publicKey) {
+      throw new Error(data.error || "No se pudo iniciar el pago con Conekta.");
+    }
+    await loadConektaCheckout();
+    conektaCheckoutOrderId = data.orderId;
+    document.getElementById("conektaCheckoutWrap").style.display = "block";
+    document.getElementById("conektaCheckoutWrap").scrollIntoView({ behavior: "smooth", block: "center" });
+    document.getElementById("conektaCheckoutFrame").replaceChildren();
+    window.ConektaCheckoutComponents.Integration({
+      config: {
+        locale: "es",
+        publicKey: data.publicKey,
+        targetIFrame: "#conektaCheckoutFrame",
+        checkoutRequestId: data.checkoutRequestId
+      },
+      options: {
+        backgroundMode: "lightMode",
+        colorPrimary: "#347aff",
+        colorText: "#151d35",
+        colorLabel: "#585987",
+        inputType: "minimalMode"
+      },
+      callbacks: {
+        onGetInfoSuccess: function () {
+          if (status) status.textContent = "Checkout listo. Completa el pago seguro de Conekta.";
+        },
+        onFinalizePayment: function () {
+          verifyConektaOrder(conektaCheckoutOrderId);
+        },
+        onErrorPayment: function (error) {
+          if (status) status.textContent = "Conekta reportó un problema: " + String(error || "intenta de nuevo");
+          button.disabled = false;
+        }
+      }
+    });
+  } catch (error) {
+    if (status) status.textContent = error.message;
+    else showStatus("No se pudo iniciar el pago", error.message, 0);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Pagar 30 días con Conekta";
+  }
+}
+
+async function verifyConektaOrder(orderId) {
+  const status = document.getElementById("conektaStatus");
+  if (!orderId || !token) return;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (status) status.textContent = "Confirmando el pago con Conekta...";
+    try {
+      const response = await fetch(API + "/api/payments/conekta/orders/" + encodeURIComponent(orderId) + "/verify", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token }
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo confirmar el pago.");
+      if (data.status === "paid") {
+        if (status) status.textContent = "Pago confirmado. Premium ya está activo por 30 días.";
+        await refreshSubscriptionStatus();
+        return;
+      }
+      if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 2500));
+    } catch (error) {
+      if (status) status.textContent = error.message;
+      return;
+    }
+  }
+  if (status) status.textContent = "El pago sigue pendiente. Conekta activará Premium cuando confirme el cobro.";
+}
+
 // EVENTOS
 // ========================================
 

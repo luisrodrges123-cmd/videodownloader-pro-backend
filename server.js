@@ -31,7 +31,14 @@ app.use(cors({
   }
 }));
 
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({
+  limit: "100kb",
+  verify(req, _res, buffer) {
+    if (req.originalUrl.startsWith("/api/payments/conekta/webhook")) {
+      req.rawBody = Buffer.from(buffer);
+    }
+  }
+}));
 
 app.use("/api", rateLimit({
   windowMs: 60000,

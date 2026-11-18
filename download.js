@@ -148,13 +148,14 @@ async function reserveDownload(userId) {
   try {
     await client.query("BEGIN");
     const result = await client.query(`
-      SELECT free_downloads_used, subscription_status, subscription_expires_at, admin_premium_until
+      SELECT free_downloads_used, subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until
       FROM users WHERE id=$1 AND is_blocked=FALSE FOR UPDATE
     `, [userId]);
     if (!result.rowCount) throw new Error("Cuenta no disponible.");
     const user = result.rows[0];
     const adminPremium = user.admin_premium_until && new Date(user.admin_premium_until) > new Date();
-    const paid = Boolean(adminPremium) || (user.subscription_status === "authorized" &&
+    const conektaPremium = user.conekta_premium_until && new Date(user.conekta_premium_until) > new Date();
+    const paid = Boolean(adminPremium || conektaPremium) || (user.subscription_status === "authorized" &&
       (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date()));
     if (!paid && user.free_downloads_used >= 5) {
       await client.query("ROLLBACK");

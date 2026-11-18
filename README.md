@@ -62,3 +62,10 @@ En Render, agrega como variables privadas `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHO
 Después del despliegue, abre **Alertas y bot**, elige los tipos de actividad, activa el bot y usa **Enviar prueba**. Si una alerta falla, aparece en el registro; el bot reintenta automáticamente y el botón **Reintentar fallidas** vuelve a poner en cola las que agotaron reintentos. Las claves de Cloud API y el destinatario se leen solo desde el servidor. WhatsApp Cloud API envía plantillas con un nombre, idioma y parámetros desde el endpoint de mensajes de Meta ([referencia oficial](https://developers.facebook.com/documentation/business-messaging/whatsapp/overview)).
 
 El historial actual sigue guardándose en el navegador. No pongas claves secretas en el HTML; guárdalas como variables de entorno en Render.
+
+
+## Conekta: Checkout integrado
+
+La página ofrece Conekta como pago único de $29 MXN por 30 días de Premium; no se renueva automáticamente. Mercado Pago conserva su suscripción mensual automática. La llave privada de Conekta se usa solo en el servidor; el Checkout integrado envía los datos de pago directamente a Conekta. La cuenta se activa únicamente después de confirmar la orden con la API y/o recibir un webhook order.paid verificado.
+
+En Render agrega CONEKTA_PRIVATE_KEY (llave privada como secreto), CONEKTA_PUBLIC_KEY (llave pública) y CONEKTA_WEBHOOK_PUBLIC_KEY (PEM público de verificación de webhooks). Registra en Conekta el endpoint https://videodownloader-pro-api.onrender.com/api/payments/conekta/webhook para el evento order.paid. El Checkout usa checkout.id y se monta dentro de la página.

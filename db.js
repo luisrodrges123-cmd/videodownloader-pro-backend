@@ -41,6 +41,21 @@ export async function initDb() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS conekta_order_payments (
+      order_id TEXT PRIMARY KEY,
+      checkout_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expected_amount INTEGER NOT NULL,
+      currency VARCHAR(3) NOT NULL DEFAULT 'MXN',
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      paid_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS conekta_order_payments_user_idx
+      ON conekta_order_payments(user_id, created_at DESC)
+  `);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_events (
       id BIGSERIAL PRIMARY KEY,
       event_type VARCHAR(50) NOT NULL,

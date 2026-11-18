@@ -318,7 +318,7 @@ router.post("/admin/bot/retry", requireAdmin, async (_req, res) => {
 router.get("/admin/users", requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, username, is_blocked, created_at, admin_premium_until,
+      SELECT id, username, is_blocked, created_at, admin_premium_until, conekta_premium_until,
              subscription_status, subscription_expires_at,
              (admin_premium_until > NOW()) AS admin_premium_active
       FROM users
@@ -330,10 +330,11 @@ router.get("/admin/users", requireAdmin, async (_req, res) => {
       const paidActive = user.subscription_status === "authorized" &&
         (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date());
       const adminActive = Boolean(user.admin_premium_active);
+      const conektaActive = Boolean(user.conekta_premium_until && new Date(user.conekta_premium_until) > new Date());
       return {
         ...user,
-        premium_active: adminActive || paidActive,
-        premium_source: adminActive ? "admin" : paidActive ? "mercadopago" : null
+        premium_active: adminActive || paidActive || conektaActive,
+        premium_source: adminActive ? "admin" : paidActive ? "mercadopago" : conektaActive ? "conekta" : null
       };
     });
 
@@ -436,7 +437,7 @@ router.patch("/admin/users/:id/premium", requireAdmin, async (req, res) => {
 router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, username, payer_email, mp_subscription_id, admin_premium_until,
+      SELECT id, username, payer_email, mp_subscription_id, admin_premium_until, conekta_premium_until,
              subscription_status, subscription_expires_at,
              free_downloads_used, created_at
       FROM users
@@ -449,10 +450,13 @@ router.get("/admin/subscriptions", requireAdmin, async (_req, res) => {
     const users = result.rows.map(user => ({
       ...user,
       subscription_active: (user.admin_premium_until && new Date(user.admin_premium_until) > new Date()) ||
+        (user.conekta_premium_until && new Date(user.conekta_premium_until) > new Date()) ||
         (user.subscription_status === 'authorized' &&
         (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date())),
       premium_source: user.admin_premium_until && new Date(user.admin_premium_until) > new Date()
-        ? 'admin' : user.subscription_status === 'authorized' ? 'mercadopago' : null
+        ? 'admin' : user.subscription_status === 'authorized' &&
+          (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date()) ? 'mercadopago' :
+          user.conekta_premium_until && new Date(user.conekta_premium_until) > new Date() ? 'conekta' : null
     }));
     res.json({
       ok: true,
