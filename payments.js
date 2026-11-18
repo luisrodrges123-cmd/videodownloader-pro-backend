@@ -2,7 +2,7 @@ import { Router } from "express";
 import { createHmac, randomUUID, timingSafeEqual, verify as verifySignature } from "node:crypto";
 import { requiredAuth } from "./auth.js";
 import { pool } from "./db.js";
-import { logAdminEvent } from "./events.js";
+import { logAdminEvent, sendWhatsAppPurchaseThankYou } from "./events.js";
 
 const router = Router();
 const PRICE = 29;
@@ -66,7 +66,9 @@ function verifyConektaWebhook(req) {
 
 async function settleConektaOrder(orderId) {
   const stored = await pool.query(
-    "SELECT order_id, user_id, expected_amount, currency, status FROM conekta_order_payments WHERE order_id=$1",
+    `SELECT p.order_id, p.user_id, p.expected_amount, p.currency, p.status,
+            u.username, u.display_name, u.phone, u.whatsapp_opt_in
+     FROM conekta_order_payments p JOIN users u ON u.id=p.user_id WHERE p.order_id=$1`,
     [orderId]
   );
   if (!stored.rowCount) return { status: "unrecognized" };
@@ -125,7 +127,46 @@ async function settleConektaOrder(orderId) {
       details: "Premium de Conekta activado por " + PREMIUM_DAYS + " días."
     });
   }
-  return { status: "paid", conektaPremiumUntil: expiresAt };
+  let whatsappThanksSent = false;
+  let whatsappThanksPending = false;
+  if (payment.whatsapp_opt_in && payment.phone) {
+    const claim = await pool.query(`
+      UPDATE conekta_order_payments
+      SET whatsapp_thanks_status='sending', whatsapp_thanks_attempted_at=NOW()
+      WHERE order_id=$1 AND (
+        whatsapp_thanks_status IN ('pending','failed') OR
+        (whatsapp_thanks_status='sending' AND whatsapp_thanks_attempted_at < NOW()-INTERVAL '2 minutes')
+      )
+      RETURNING order_id
+    `, [orderId]);
+    if (claim.rowCount) {
+      try {
+        await sendWhatsAppPurchaseThankYou({
+          phone: payment.phone,
+          username: payment.display_name || payment.username,
+          premiumUntil: expiresAt
+        });
+        await pool.query(
+          "UPDATE conekta_order_payments SET whatsapp_thanks_status='sent', whatsapp_thanks_sent_at=NOW() WHERE order_id=$1",
+          [orderId]
+        );
+        whatsappThanksSent = true;
+      } catch (error) {
+        console.error("WhatsApp purchase thank-you:", error.message);
+        await pool.query("UPDATE conekta_order_payments SET whatsapp_thanks_status='failed' WHERE order_id=$1", [orderId]);
+        whatsappThanksPending = true;
+      }
+    } else {
+      const state = await pool.query("SELECT whatsapp_thanks_status FROM conekta_order_payments WHERE order_id=$1", [orderId]);
+      whatsappThanksSent = state.rows[0]?.whatsapp_thanks_status === "sent";
+      whatsappThanksPending = state.rows[0]?.whatsapp_thanks_status !== "sent";
+    }
+  }
+  return {
+    status: "paid", conektaPremiumUntil: expiresAt,
+    whatsappThanksSent, whatsappThanksPending,
+    whatsappThanksEnabled: Boolean(payment.whatsapp_opt_in && payment.phone)
+  };
 }
 
 function verifyWebhook(req) {
@@ -159,7 +200,7 @@ router.post("/conekta/order", requiredAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Configura las llaves privada, pública y pública de webhooks de Conekta en Render." });
     }
     const current = await pool.query(
-      "SELECT email, payer_email, subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1",
+      "SELECT email, payer_email, phone, whatsapp_opt_in, subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1",
       [req.user.id]
     );
     const user = current.rows[0];
@@ -180,7 +221,11 @@ router.post("/conekta/order", requiredAuth, async (req, res) => {
       headers: { "Idempotency-Key": randomUUID() },
       body: JSON.stringify({
         currency: CURRENCY,
-        customer_info: { name: String(req.user.display_name || req.user.username).slice(0, 100), email },
+        customer_info: {
+          name: String(req.user.display_name || req.user.username).slice(0, 100),
+          email,
+          ...(user.phone ? { phone: user.phone } : {})
+        },
         line_items: [{
           name: "VDownloader Pro - 30 días",
           description: "Acceso Premium durante 30 días. Renovación manual.",
@@ -239,7 +284,8 @@ router.post("/conekta/webhook", async (req, res) => {
     if (event.type !== "order.paid") return res.sendStatus(200);
     const orderId = String(event.data?.object?.id || "");
     if (!/^ord_[A-Za-z0-9]+$/.test(orderId)) return res.sendStatus(200);
-    await settleConektaOrder(orderId);
+    const settled = await settleConektaOrder(orderId);
+    if (settled.whatsappThanksPending) return res.status(503).json({ ok: false, error: "El pago quedó confirmado, pero WhatsApp no aceptó el agradecimiento; Conekta volverá a intentar la notificación." });
     return res.sendStatus(200);
   } catch (error) {
     console.error("Conekta webhook:", error.message);

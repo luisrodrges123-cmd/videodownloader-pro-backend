@@ -37,6 +37,8 @@ export async function initAuthDb() {
       ADD COLUMN IF NOT EXISTS admin_premium_until TIMESTAMPTZ,
       ADD COLUMN IF NOT EXISTS display_name VARCHAR(50),
       ADD COLUMN IF NOT EXISTS email VARCHAR(254),
+      ADD COLUMN IF NOT EXISTS phone VARCHAR(20),
+      ADD COLUMN IF NOT EXISTS whatsapp_opt_in BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS conekta_premium_until TIMESTAMPTZ
   `);
 }
@@ -55,7 +57,7 @@ export async function optionalAuth(req, res, next) {
     const decoded = jwt.verify(token, getSecret());
 
     const result = await pool.query(
-      `SELECT id, username, display_name, email, created_at, is_blocked
+      `SELECT id, username, display_name, email, phone, whatsapp_opt_in, created_at, is_blocked
        FROM users
        WHERE id = $1`,
       [decoded.id]
@@ -72,6 +74,8 @@ export async function optionalAuth(req, res, next) {
       username: result.rows[0].username,
       display_name: result.rows[0].display_name,
       email: result.rows[0].email,
+      phone: result.rows[0].phone,
+      whatsapp_opt_in: result.rows[0].whatsapp_opt_in,
       created_at: result.rows[0].created_at
     };
 
@@ -134,7 +138,7 @@ router.post("/register", async (req, res) => {
     const result = await pool.query(
       `INSERT INTO users (username, password_hash)
        VALUES ($1, $2)
-       RETURNING id, username, display_name, email, created_at`,
+       RETURNING id, username, display_name, email, phone, whatsapp_opt_in, created_at`,
       [username, passwordHash]
     );
 
@@ -180,7 +184,7 @@ router.post("/login", async (req, res) => {
     const password = String(req.body.password || "");
 
     const result = await pool.query(
-      `SELECT id, username, display_name, email, created_at, password_hash, is_blocked
+      `SELECT id, username, display_name, email, phone, whatsapp_opt_in, created_at, password_hash, is_blocked
        FROM users
        WHERE username = $1`,
       [username]
@@ -233,6 +237,8 @@ router.post("/login", async (req, res) => {
         username: user.username,
         display_name: user.display_name,
         email: user.email,
+        phone: user.phone,
+        whatsapp_opt_in: user.whatsapp_opt_in,
         created_at: user.created_at
       }
     });
@@ -257,6 +263,9 @@ router.put("/profile", requiredAuth, async (req, res) => {
   try {
     const displayName = String(req.body?.display_name || "").trim();
     const email = String(req.body?.email || "").trim().toLowerCase();
+    const rawPhone = String(req.body?.phone || "").trim().replace(/[\s()-]/g, "");
+    const phone = rawPhone ? rawPhone.replace(/\D/g, "") : "";
+    const whatsappOptIn = req.body?.whatsapp_opt_in === true;
 
     if (displayName.length < 2 || displayName.length > 50) {
       return res.status(400).json({ error: "El nombre de perfil debe tener entre 2 y 50 caracteres." });
@@ -264,13 +273,19 @@ router.put("/profile", requiredAuth, async (req, res) => {
     if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
       return res.status(400).json({ error: "Escribe un correo electrónico válido." });
     }
+    if (rawPhone && !/^\+[1-9]\d{7,14}$/.test(rawPhone)) {
+      return res.status(400).json({ error: "Escribe tu WhatsApp con código de país, por ejemplo +52 656 123 4567." });
+    }
+    if (whatsappOptIn && !phone) {
+      return res.status(400).json({ error: "Agrega tu número de WhatsApp antes de autorizar mensajes." });
+    }
 
     const result = await pool.query(`
       UPDATE users
-      SET display_name=$1, email=$2
-      WHERE id=$3
-      RETURNING id, username, display_name, email, created_at
-    `, [displayName, email || null, req.user.id]);
+      SET display_name=$1, email=$2, phone=$3, whatsapp_opt_in=$4
+      WHERE id=$5
+      RETURNING id, username, display_name, email, phone, whatsapp_opt_in, created_at
+    `, [displayName, email || null, phone || null, whatsappOptIn, req.user.id]);
 
     if (!result.rows.length) return res.status(404).json({ error: "Cuenta no encontrada." });
     await logAdminEvent({

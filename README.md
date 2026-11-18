@@ -59,6 +59,14 @@ Fecha: {{4}}
 
 En Render, agrega como variables privadas `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TO` (teléfono destinatario con código de país), `WHATSAPP_TEMPLATE_NAME=admin_activity_alert` y `WHATSAPP_TEMPLATE_LANGUAGE=es_MX`. `WHATSAPP_GRAPH_API_VERSION` y `APP_TIMEZONE` son opcionales. No coloques el token en el HTML ni en GitHub.
 
+Para enviar una confirmación de compra al cliente, agrega también `WHATSAPP_PURCHASE_TEMPLATE_NAME=purchase_thank_you` y `WHATSAPP_PURCHASE_TEMPLATE_LANGUAGE=es_MX`. Crea y consigue aprobación en WhatsApp Manager para una plantilla de utilidad llamada `purchase_thank_you`, idioma `es_MX`, con este cuerpo de dos variables:
+
+```text
+VDownloader Pro: gracias por tu compra, {{1}}. Tu pago quedó confirmado y Premium está activo hasta {{2}}. La renovación es manual.
+```
+
+Usa muestras como `Luis` para `{{1}}` y `17/12/2026` para `{{2}}`. En **Mi perfil**, el usuario debe guardar su WhatsApp con código de país y marcar que acepta recibir confirmaciones de compra. El agradecimiento sale únicamente después de que Conekta confirma el pago. Los avisos administrativos siguen yendo al número `WHATSAPP_TO` cuando están activados en **Alertas y bot**.
+
 Después del despliegue, abre **Alertas y bot**, elige los tipos de actividad, activa el bot y usa **Enviar prueba**. Si una alerta falla, aparece en el registro; el bot reintenta automáticamente y el botón **Reintentar fallidas** vuelve a poner en cola las que agotaron reintentos. Las claves de Cloud API y el destinatario se leen solo desde el servidor. WhatsApp Cloud API envía plantillas con un nombre, idioma y parámetros desde el endpoint de mensajes de Meta ([referencia oficial](https://developers.facebook.com/documentation/business-messaging/whatsapp/overview)).
 
 El historial actual sigue guardándose en el navegador. No pongas claves secretas en el HTML; guárdalas como variables de entorno en Render.

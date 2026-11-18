@@ -49,8 +49,15 @@ export async function initDb() {
       currency VARCHAR(3) NOT NULL DEFAULT 'MXN',
       status VARCHAR(20) NOT NULL DEFAULT 'pending',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      paid_at TIMESTAMPTZ
+      paid_at TIMESTAMPTZ,
+      whatsapp_thanks_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      whatsapp_thanks_attempted_at TIMESTAMPTZ,
+      whatsapp_thanks_sent_at TIMESTAMPTZ
     );
+    ALTER TABLE conekta_order_payments
+      ADD COLUMN IF NOT EXISTS whatsapp_thanks_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS whatsapp_thanks_attempted_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS whatsapp_thanks_sent_at TIMESTAMPTZ;
     CREATE INDEX IF NOT EXISTS conekta_order_payments_user_idx
       ON conekta_order_payments(user_id, created_at DESC)
   `);

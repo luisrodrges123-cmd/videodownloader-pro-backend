@@ -124,6 +124,50 @@ export async function sendWhatsAppTemplate({ title, username = "—", details = 
   return data.messages?.[0]?.id || null;
 }
 
+export async function sendWhatsAppPurchaseThankYou({ phone, username = "Cliente", premiumUntil }) {
+  const accessToken = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+  const phoneNumberId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const templateName = String(process.env.WHATSAPP_PURCHASE_TEMPLATE_NAME || "purchase_thank_you").trim();
+  const language = String(process.env.WHATSAPP_PURCHASE_TEMPLATE_LANGUAGE || "es_MX").trim();
+  const recipient = String(phone || "").replace(/\D/g, "");
+  const graphVersion = String(process.env.WHATSAPP_GRAPH_API_VERSION || "v27.0");
+  if (!accessToken || !/^\d+$/.test(phoneNumberId) || !/^[a-z0-9_]{1,512}$/.test(templateName)) {
+    throw new Error("Configura WhatsApp y la plantilla de agradecimiento en Render.");
+  }
+  if (!/^[1-9]\d{7,14}$/.test(recipient)) throw new Error("El usuario no tiene un número de WhatsApp válido.");
+  if (!/^v\d+\.\d+$/.test(graphVersion)) throw new Error("WHATSAPP_GRAPH_API_VERSION no es válida.");
+
+  const expiry = premiumUntil ? new Date(premiumUntil).toLocaleDateString("es-MX", {
+    timeZone: process.env.APP_TIMEZONE || "America/Chihuahua"
+  }) : "30 días";
+  const values = [username || "Cliente", expiry]
+    .map(value => String(value).replace(/\s+/g, " ").trim().slice(0, 900));
+  const response = await fetch(`https://graph.facebook.com/${graphVersion}/${encodeURIComponent(phoneNumberId)}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: recipient,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: language },
+        components: [{
+          type: "body",
+          parameters: values.map(text => ({ type: "text", text }))
+        }]
+      }
+    }),
+    signal: AbortSignal.timeout(15000)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error?.message || `WhatsApp respondió ${response.status}`);
+  return data.messages?.[0]?.id || null;
+}
+
 let workerRunning = false;
 
 async function sendNextAlert() {

@@ -370,6 +370,8 @@ footer{
   margin-top:12px;
 }
 .profile-help{color:var(--muted);font-size:13px;line-height:1.55;margin:-6px 0 18px}
+.profile-whatsapp-consent{display:flex;align-items:flex-start;gap:9px;color:var(--muted);font-size:12px;line-height:1.45;margin:10px 0 14px}
+.profile-whatsapp-consent input{width:auto;margin-top:2px;accent-color:var(--blue)}
 input[readonly]{color:var(--muted);cursor:default}
 
 .account{
@@ -793,6 +795,11 @@ footer{color:#73839b;margin-top:60px}
         <label for="profileEmail">Correo electrónico (opcional)</label>
         <input id="profileEmail" type="email" maxlength="254" autocomplete="email" placeholder="tu-correo@ejemplo.com">
       </div>
+      <div class="field">
+        <label for="profilePhone">WhatsApp con código de país (opcional)</label>
+        <input id="profilePhone" type="tel" maxlength="20" autocomplete="tel" placeholder="+52 656 123 4567">
+      </div>
+      <label class="profile-whatsapp-consent"><input id="profileWhatsAppOptIn" type="checkbox"> Acepto recibir por WhatsApp la confirmación de mis compras.</label>
       <button class="btn primary wide" id="saveProfileButton" type="submit">Guardar perfil</button>
       <div class="message" id="profileMessage" role="status"></div>
     </form>
@@ -867,6 +874,8 @@ function openProfile() {
   document.getElementById("profileUsername").value = currentUser.username || "";
   document.getElementById("profileDisplayName").value = currentUser.display_name || currentUser.username || "";
   document.getElementById("profileEmail").value = currentUser.email || "";
+  document.getElementById("profilePhone").value = currentUser.phone ? "+" + currentUser.phone : "";
+  document.getElementById("profileWhatsAppOptIn").checked = currentUser.whatsapp_opt_in === true;
   document.getElementById("profileMessage").textContent = "";
   document.getElementById("profileModal").classList.add("show");
 }
@@ -894,7 +903,9 @@ async function saveProfile(event) {
       },
       body: JSON.stringify({
         display_name: document.getElementById("profileDisplayName").value,
-        email: document.getElementById("profileEmail").value
+        email: document.getElementById("profileEmail").value,
+        phone: document.getElementById("profilePhone").value,
+        whatsapp_opt_in: document.getElementById("profileWhatsAppOptIn").checked
       })
     });
     const data = await response.json();
