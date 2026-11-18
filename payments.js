@@ -5,7 +5,7 @@ import { pool } from "./db.js";
 import { logAdminEvent, sendWhatsAppPurchaseThankYou } from "./events.js";
 
 const router = Router();
-const PRICE = 29;
+const PRICE = 35;
 const FREE_DOWNLOAD_LIMIT = 10;
 const CURRENCY = "MXN";
 const CONEKTA_AMOUNT = PRICE * 100;

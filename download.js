@@ -253,7 +253,7 @@ router.post("/", async (req, res) => {
     if (!reservation.allowed) {
       return res.status(402).json({
         ok:false, code:"SUBSCRIPTION_REQUIRED",
-        error:"Ya utilizaste tus 10 descargas gratis. Activa VDownloader Pro por $29 MXN por 30 días.",
+        error:"Ya utilizaste tus 10 descargas gratis. Activa VDownloader Pro por $35 MXN por 30 días.",
         freeDownloadsRemaining:0
       });
     }
