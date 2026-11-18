@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1220">
+  <title>Pago seguro · VDownloader Pro</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080d18;--panel:#101a2b;--line:#24334b;--text:#eef4ff;--muted:#a9b6ca;--cyan:#65d9ef;--blue:#347aff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% -20%,#1d3865 0,transparent 58%),var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:28px 16px}
+    main{width:min(760px,100%);margin:0 auto}.back{display:inline-flex;gap:8px;align-items:center;color:var(--muted);text-decoration:none;margin-bottom:20px}.back:hover{color:var(--text)}
+    .card{background:linear-gradient(145deg,rgba(18,29,48,.98),rgba(11,18,31,.98));border:1px solid var(--line);border-radius:22px;padding:clamp(20px,5vw,38px);box-shadow:0 24px 70px #0006}
+    .eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:.78rem}.title{font-size:clamp(1.8rem,5vw,2.5rem);line-height:1.1;margin:8px 0}.muted{color:var(--muted)}
+    .price{display:flex;align-items:baseline;gap:10px;margin:20px 0 12px}.price strong{font-size:2rem;color:var(--cyan)}
+    label{display:block;font-weight:650;margin:22px 0 7px}input{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:#080f1d;color:var(--text);font:inherit}
+    button,.button{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:48px;border:0;border-radius:12px;background:linear-gradient(120deg,#347aff,#28b8df);color:white;font:700 1rem inherit;text-decoration:none;cursor:pointer;margin-top:14px;padding:12px 18px}
+    button:disabled{opacity:.6;cursor:wait}.notice{margin:16px 0 0;min-height:24px}.secure{border-top:1px solid var(--line);margin-top:22px;padding-top:16px;font-size:.9rem}
+    #checkout{display:none;margin-top:22px;background:#fff;border-radius:14px;overflow:hidden}#checkoutFrame{min-height:680px}
+    .hidden{display:none!important}.error{color:#ffb2b2}.success{color:#a7f3d0}
+    @media(max-width:520px){body{padding:18px 12px}.card{border-radius:17px}#checkoutFrame{min-height:720px}}
+  </style>
+  <script crossorigin src="https://pay.conekta.com/v1.0/js/conekta-checkout.min.js"></script>
+</head>
+<body>
+  <main>
+    <a class="back" href="./index.html">← Volver a VDownloader</a>
+    <section class="card">
+      <div class="eyebrow">Checkout seguro con Conekta</div>
+      <h1 class="title">Activa VDownloader Pro</h1>
+      <p class="muted">Obtén descargas Premium durante 30 días. El pago es único y la renovación es manual.</p>
+      <div class="price"><strong>$29 MXN</strong><span class="muted">por 30 días</span></div>
+      <label for="payerEmail">Correo para el recibo y la orden</label>
+      <input id="payerEmail" type="email" autocomplete="email" inputmode="email" placeholder="tu-correo@ejemplo.com" required>
+      <button id="payButton" type="button">Continuar al pago seguro</button>
+      <p class="notice muted" id="notice" role="status" aria-live="polite"></p>
+      <div id="checkout" aria-label="Formulario de pago seguro"><div id="checkoutFrame"></div></div>
+      <p class="secure muted">🔒 Los datos de tu tarjeta se envían directamente a Conekta; esta página no los almacena.</p>
+      <a class="button hidden" id="returnButton" href="./index.html">Volver a VDownloader Pro</a>
+    </section>
+  </main>
+  <script>
+    const API = "https://videodownloader-pro-api.onrender.com";
+    const token = localStorage.getItem("vdp_token") || "";
+    const emailInput = document.getElementById("payerEmail");
+    const button = document.getElementById("payButton");
+    const notice = document.getElementById("notice");
+    const checkout = document.getElementById("checkout");
+    const checkoutFrame = document.getElementById("checkoutFrame");
+    const returnButton = document.getElementById("returnButton");
+    let orderId = "";
+
+    emailInput.value = sessionStorage.getItem("vdp_payment_email") || "";
+    if (!token) {
+      notice.innerHTML = 'Inicia sesión antes de pagar. <a href="./index.html" style="color:#8db5ff">Volver e iniciar sesión</a>.';
+      button.disabled = true;
+    }
+
+    function showNotice(message, kind="muted") {
+      notice.className = "notice " + kind;
+      notice.textContent = message;
+    }
+
+    async function verifyOrder() {
+      showNotice("Pago recibido. Confirmando el pago con Conekta…");
+      for (let i=0;i<8;i++) {
+        try {
+          const response = await fetch(API + "/api/payments/conekta/orders/" + encodeURIComponent(orderId) + "/verify", {
+            method:"POST", headers:{Authorization:"Bearer " + token}
+          });
+          const data = await response.json();
+          if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo confirmar el pago.");
+          if (data.status === "paid") {
+            showNotice("Pago confirmado. Premium ya está activo por 30 días.", "success");
+            button.classList.add("hidden");
+            returnButton.classList.remove("hidden");
+            return;
+          }
+        } catch (error) {
+          showNotice(error.message, "error");
+          return;
+        }
+        await new Promise(resolve=>setTimeout(resolve,2500));
+      }
+      showNotice("El pago sigue pendiente. Conekta notificará al servidor cuando confirme el cobro.");
+      returnButton.classList.remove("hidden");
+    }
+
+    button.addEventListener("click", async () => {
+      const email = emailInput.value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        showNotice("Escribe un correo electrónico válido.", "error"); emailInput.focus(); return;
+      }
+      button.disabled = true;
+      button.textContent = "Preparando checkout…";
+      showNotice("Conectando con Conekta…");
+      try {
+        const response = await fetch(API + "/api/payments/conekta/order", {
+          method:"POST", headers:{"Content-Type":"application/json",Authorization:"Bearer " + token},
+          body:JSON.stringify({payer_email:email})
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok || !data.checkoutRequestId || !data.publicKey) throw new Error(data.error || "No se pudo iniciar el pago con Conekta.");
+        if (!window.ConektaCheckoutComponents) throw new Error("No se pudo cargar el checkout de Conekta. Recarga la página e intenta otra vez.");
+        orderId = data.orderId;
+        sessionStorage.setItem("vdp_payment_email", email);
+        checkout.style.display = "block";
+        checkout.scrollIntoView({behavior:"smooth",block:"start"});
+        window.ConektaCheckoutComponents.Integration({
+          config:{locale:"es",publicKey:data.publicKey,targetIFrame:"#checkoutFrame",checkoutRequestId:data.checkoutRequestId},
+          options:{backgroundMode:"lightMode",colorPrimary:"#347aff",colorText:"#151d35",colorLabel:"#585987",inputType:"minimalMode",autoResize:true},
+          callbacks:{
+            onGetInfoSuccess:()=>showNotice("Checkout listo. Completa tu pago seguro con Conekta."),
+            onFinalizePayment:verifyOrder,
+            onErrorPayment:error=>{showNotice("Conekta reportó un problema: " + String(error || "intenta de nuevo"),"error");button.disabled=false;button.textContent="Reintentar checkout";}
+          }
+        });
+        showNotice("Checkout listo. Completa tu pago seguro con Conekta.");
+      } catch (error) {
+        showNotice(error.message,"error");
+        button.disabled=false;
+        button.textContent="Reintentar checkout";
+      }
+    });
+  </script>
+</body>
+</html>

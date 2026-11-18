@@ -670,15 +670,9 @@ footer{color:#73839b;margin-top:60px}
     <label for="subscriptionEmail">Correo para el pago</label>
     <input id="subscriptionEmail" type="email" autocomplete="email" placeholder="tu-correo@ejemplo.com" required>
     <div class="payment-actions">
-      <button class="btn wide" id="conektaButton" onclick="startConektaPayment()" style="display:none">Pagar 30 días con Conekta</button>
+      <button class="btn wide" id="conektaButton" onclick="openPaymentPage()" style="display:none">Pagar 30 días con Conekta</button>
     </div>
     <p class="muted">Pago único con Conekta: $29 MXN por 30 días de Premium. La renovación es manual.</p>
-    <p class="muted" id="conektaStatus" role="status"></p>
-    <div class="conekta-checkout" id="conektaCheckoutWrap" style="display:none">
-      <h3>Pago seguro con Conekta</h3>
-      <p class="muted">Los datos de pago se envían directamente a Conekta.</p>
-      <div id="conektaCheckoutFrame"></div>
-    </div>
   </div>
 </section>
 
@@ -1806,8 +1800,6 @@ function safeFilename(name) {
 // SUSCRIPCIÓN Y LÍMITE GRATUITO
 // ========================================
 
-let conektaCheckoutOrderId = "";
-
 async function refreshSubscriptionStatus() {
   const panel = document.getElementById("subscriptionPanel");
   const info = document.getElementById("subscriptionInfo");
@@ -1863,19 +1855,7 @@ function subscriptionEmail() {
   return email;
 }
 
-function loadConektaCheckout() {
-  if (window.ConektaCheckoutComponents) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "https://pay.conekta.com/v1.0/js/conekta-checkout.min.js";
-    script.crossOrigin = "anonymous";
-    script.onload = resolve;
-    script.onerror = () => reject(new Error("No se pudo cargar el checkout de Conekta."));
-    document.head.appendChild(script);
-  });
-}
-
-async function startConektaPayment() {
+function openPaymentPage() {
   if (!token) {
     openModal("login");
     showStatus("Inicia sesión", "Necesitas una cuenta para pagar Premium.", 0);
@@ -1883,89 +1863,8 @@ async function startConektaPayment() {
   }
   const email = subscriptionEmail();
   if (!email) return;
-  const button = document.getElementById("conektaButton");
-  const status = document.getElementById("conektaStatus");
-  button.disabled = true;
-  button.textContent = "Preparando pago...";
-  if (status) status.textContent = "";
-  try {
-    const response = await fetch(API + "/api/payments/conekta/order", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "Bearer " + token
-      },
-      body: JSON.stringify({ payer_email: email })
-    });
-    const data = await response.json();
-    if (!response.ok || !data.ok || !data.checkoutRequestId || !data.publicKey) {
-      throw new Error(data.error || "No se pudo iniciar el pago con Conekta.");
-    }
-    await loadConektaCheckout();
-    conektaCheckoutOrderId = data.orderId;
-    document.getElementById("conektaCheckoutWrap").style.display = "block";
-    document.getElementById("conektaCheckoutWrap").scrollIntoView({ behavior: "smooth", block: "center" });
-    document.getElementById("conektaCheckoutFrame").replaceChildren();
-    window.ConektaCheckoutComponents.Integration({
-      config: {
-        locale: "es",
-        publicKey: data.publicKey,
-        targetIFrame: "#conektaCheckoutFrame",
-        checkoutRequestId: data.checkoutRequestId
-      },
-      options: {
-        backgroundMode: "lightMode",
-        colorPrimary: "#347aff",
-        colorText: "#151d35",
-        colorLabel: "#585987",
-        inputType: "minimalMode"
-      },
-      callbacks: {
-        onGetInfoSuccess: function () {
-          if (status) status.textContent = "Checkout listo. Completa el pago seguro de Conekta.";
-        },
-        onFinalizePayment: function () {
-          verifyConektaOrder(conektaCheckoutOrderId);
-        },
-        onErrorPayment: function (error) {
-          if (status) status.textContent = "Conekta reportó un problema: " + String(error || "intenta de nuevo");
-          button.disabled = false;
-        }
-      }
-    });
-  } catch (error) {
-    if (status) status.textContent = error.message;
-    else showStatus("No se pudo iniciar el pago", error.message, 0);
-  } finally {
-    button.disabled = false;
-    button.textContent = "Pagar 30 días con Conekta";
-  }
-}
-
-async function verifyConektaOrder(orderId) {
-  const status = document.getElementById("conektaStatus");
-  if (!orderId || !token) return;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (status) status.textContent = "Confirmando el pago con Conekta...";
-    try {
-      const response = await fetch(API + "/api/payments/conekta/orders/" + encodeURIComponent(orderId) + "/verify", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + token }
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) throw new Error(data.error || "No se pudo confirmar el pago.");
-      if (data.status === "paid") {
-        if (status) status.textContent = "Pago confirmado. Premium ya está activo por 30 días.";
-        await refreshSubscriptionStatus();
-        return;
-      }
-      if (attempt < 4) await new Promise(resolve => setTimeout(resolve, 2500));
-    } catch (error) {
-      if (status) status.textContent = error.message;
-      return;
-    }
-  }
-  if (status) status.textContent = "El pago sigue pendiente. Conekta activará Premium cuando confirme el cobro.";
+  sessionStorage.setItem("vdp_payment_email", email);
+  window.location.assign("./payment.html");
 }
 
 // EVENTOS
