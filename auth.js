@@ -288,9 +288,15 @@ router.put("/profile", requiredAuth, async (req, res) => {
     `, [displayName, email || null, phone || null, whatsappOptIn, req.user.id]);
 
     if (!result.rows.length) return res.status(404).json({ error: "Cuenta no encontrada." });
+    const whatsappAuthorizationChanged = whatsappOptIn &&
+      (!req.user.whatsapp_opt_in || req.user.phone !== phone);
     await logAdminEvent({
-      type: "profile_updated", category: "security", userId: req.user.id,
-      username: req.user.username, details: "El usuario actualizó su perfil."
+      type: whatsappAuthorizationChanged ? "whatsapp_opt_in" : "profile_updated",
+      category: "security", userId: req.user.id,
+      username: req.user.username,
+      details: whatsappAuthorizationChanged
+        ? "El usuario autorizó las confirmaciones de compra por WhatsApp."
+        : "El usuario actualizó su perfil."
     });
     return res.json({ ok: true, user: result.rows[0] });
   } catch (error) {

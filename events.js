@@ -14,6 +14,7 @@ const EVENT_TITLES = {
   login_succeeded: "Inicio de sesión",
   login_failed: "Intento de inicio de sesión fallido",
   profile_updated: "Perfil actualizado",
+  whatsapp_opt_in: "Autorizó confirmaciones por WhatsApp",
   download_requested: "Descarga solicitada",
   download_completed: "Descarga completada",
   download_failed: "Error al procesar una descarga",
