@@ -12,7 +12,7 @@
     .card{background:linear-gradient(145deg,rgba(18,29,48,.98),rgba(11,18,31,.98));border:1px solid var(--line);border-radius:22px;padding:clamp(20px,5vw,38px);box-shadow:0 24px 70px #0006}
     .eyebrow{color:var(--cyan);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:.78rem}.title{font-size:clamp(1.8rem,5vw,2.5rem);line-height:1.1;margin:8px 0}.muted{color:var(--muted)}
     .price{display:flex;align-items:baseline;gap:10px;margin:20px 0 12px}.price strong{font-size:2rem;color:var(--cyan)}
-    label{display:block;font-weight:650;margin:22px 0 7px}input{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:12px;background:#080f1d;color:var(--text);font:inherit}
+    .account{margin:22px 0 8px;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#080f1d;color:var(--muted)}
     button,.button{display:inline-flex;align-items:center;justify-content:center;width:100%;min-height:48px;border:0;border-radius:12px;background:linear-gradient(120deg,#347aff,#28b8df);color:white;font:700 1rem inherit;text-decoration:none;cursor:pointer;margin-top:14px;padding:12px 18px}
     button:disabled{opacity:.6;cursor:wait}.notice{margin:16px 0 0;min-height:24px}.secure{border-top:1px solid var(--line);margin-top:22px;padding-top:16px;font-size:.9rem}
     #checkout{display:none;margin-top:22px;background:#fff;border-radius:14px;overflow:hidden}#checkoutFrame{min-height:680px}
@@ -29,9 +29,8 @@
       <h1 class="title">Activa VDownloader Pro</h1>
       <p class="muted">Obtén descargas Premium durante 30 días. El pago es único y la renovación es manual.</p>
       <div class="price"><strong>$29 MXN</strong><span class="muted">por 30 días</span></div>
-      <label for="payerEmail">Correo para el recibo y la orden</label>
-      <input id="payerEmail" type="email" autocomplete="email" inputmode="email" placeholder="tu-correo@ejemplo.com" required>
-      <button id="payButton" type="button">Continuar al pago seguro</button>
+      <p class="account" id="accountInfo">El pago se asociará automáticamente a tu cuenta.</p>
+      <button id="payButton" type="button">Pagar 30 días con Conekta</button>
       <p class="notice muted" id="notice" role="status" aria-live="polite"></p>
       <div id="checkout" aria-label="Formulario de pago seguro"><div id="checkoutFrame"></div></div>
       <p class="secure muted">🔒 Los datos de tu tarjeta se envían directamente a Conekta; esta página no los almacena.</p>
@@ -41,7 +40,6 @@
   <script>
     const API = "https://videodownloader-pro-api.onrender.com";
     const token = localStorage.getItem("vdp_token") || "";
-    const emailInput = document.getElementById("payerEmail");
     const button = document.getElementById("payButton");
     const notice = document.getElementById("notice");
     const checkout = document.getElementById("checkout");
@@ -49,10 +47,22 @@
     const returnButton = document.getElementById("returnButton");
     let orderId = "";
 
-    emailInput.value = sessionStorage.getItem("vdp_payment_email") || "";
+    const accountInfo = document.getElementById("accountInfo");
     if (!token) {
       notice.innerHTML = 'Inicia sesión antes de pagar. <a href="./index.html" style="color:#8db5ff">Volver e iniciar sesión</a>.';
       button.disabled = true;
+    } else {
+      button.disabled = true;
+      fetch(API + "/api/auth/me", {headers:{Authorization:"Bearer " + token}, cache:"no-store"})
+        .then(response => response.ok ? response.json() : Promise.reject(new Error("Sesión no válida")))
+        .then(data => {
+          accountInfo.textContent = "Compra asociada a tu usuario: @" + data.user.username;
+          button.disabled = false;
+        })
+        .catch(() => {
+          button.disabled = true;
+          notice.innerHTML = 'Tu sesión venció. <a href="./index.html" style="color:#8db5ff">Vuelve a iniciar sesión</a>.';
+        });
     }
 
     function showNotice(message, kind="muted") {
@@ -86,23 +96,18 @@
     }
 
     button.addEventListener("click", async () => {
-      const email = emailInput.value.trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        showNotice("Escribe un correo electrónico válido.", "error"); emailInput.focus(); return;
-      }
       button.disabled = true;
       button.textContent = "Preparando checkout…";
       showNotice("Conectando con Conekta…");
       try {
         const response = await fetch(API + "/api/payments/conekta/order", {
           method:"POST", headers:{"Content-Type":"application/json",Authorization:"Bearer " + token},
-          body:JSON.stringify({payer_email:email})
+          body:JSON.stringify({})
         });
         const data = await response.json();
         if (!response.ok || !data.ok || !data.checkoutRequestId || !data.publicKey) throw new Error(data.error || "No se pudo iniciar el pago con Conekta.");
         if (!window.ConektaCheckoutComponents) throw new Error("No se pudo cargar el checkout de Conekta. Recarga la página e intenta otra vez.");
         orderId = data.orderId;
-        sessionStorage.setItem("vdp_payment_email", email);
         checkout.style.display = "block";
         checkout.scrollIntoView({behavior:"smooth",block:"start"});
         window.ConektaCheckoutComponents.Integration({

@@ -667,8 +667,6 @@ footer{color:#73839b;margin-top:60px}
       <strong style="color:var(--cyan)">$29 MXN / 30 días</strong>
     </div>
     <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar Premium.</p>
-    <label for="subscriptionEmail">Correo para el pago</label>
-    <input id="subscriptionEmail" type="email" autocomplete="email" placeholder="tu-correo@ejemplo.com" required>
     <div class="payment-actions">
       <button class="btn wide" id="conektaButton" onclick="openPaymentPage()" style="display:none">Pagar 30 días con Conekta</button>
     </div>
@@ -1844,26 +1842,12 @@ async function refreshSubscriptionStatus() {
   }
 }
 
-function subscriptionEmail() {
-  const emailInput = document.getElementById("subscriptionEmail");
-  const email = String(emailInput?.value || "").trim();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    showStatus("Correo inválido", "Escribe un correo válido para continuar.", 0);
-    emailInput?.focus();
-    return "";
-  }
-  return email;
-}
-
 function openPaymentPage() {
   if (!token) {
     openModal("login");
     showStatus("Inicia sesión", "Necesitas una cuenta para pagar Premium.", 0);
     return;
   }
-  const email = subscriptionEmail();
-  if (!email) return;
-  sessionStorage.setItem("vdp_payment_email", email);
   window.location.assign("./payment.html");
 }
 

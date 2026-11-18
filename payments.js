@@ -157,15 +157,16 @@ router.post("/conekta/order", requiredAuth, async (req, res) => {
     if (!privateKey || !publicKey || !webhookPublicKey) {
       return res.status(503).json({ ok: false, error: "Configura las llaves privada, pública y pública de webhooks de Conekta en Render." });
     }
-    const email = String(req.body?.payer_email || "").trim().toLowerCase();
-    if (!validEmail(email)) return res.status(400).json({ ok: false, error: "Escribe un correo electrónico válido." });
-
     const current = await pool.query(
-      "SELECT subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1",
+      "SELECT email, payer_email, subscription_status, subscription_expires_at, admin_premium_until, conekta_premium_until FROM users WHERE id=$1",
       [req.user.id]
     );
     const user = current.rows[0];
     if (!user) return res.status(404).json({ ok: false, error: "Cuenta no encontrada." });
+    const email = String(user.email || user.payer_email || "").trim().toLowerCase();
+    if (!validEmail(email)) {
+      return res.status(400).json({ ok: false, error: "Agrega un correo válido al perfil de tu cuenta y vuelve a intentarlo. Se usará automáticamente para el pago." });
+    }
     const now = Date.now();
     const premiumActive = (user.admin_premium_until && new Date(user.admin_premium_until).getTime() > now) ||
       (user.conekta_premium_until && new Date(user.conekta_premium_until).getTime() > now) ||
