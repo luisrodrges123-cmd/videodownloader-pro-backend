@@ -666,7 +666,7 @@ footer{color:#73839b;margin-top:60px}
       <h2>⭐ VDownloader Pro</h2>
       <strong style="color:var(--cyan)">$29 MXN / 30 días</strong>
     </div>
-    <p class="muted" id="subscriptionInfo">Tienes 5 descargas gratis por cuenta. Después puedes activar Premium.</p>
+    <p class="muted" id="subscriptionInfo">Tienes 10 descargas gratis por cuenta. Después puedes activar Premium.</p>
     <div class="payment-actions">
       <button class="btn wide" id="conektaButton" onclick="openPaymentPage()" style="display:none">Pagar 30 días con Conekta</button>
     </div>
@@ -1830,7 +1830,7 @@ async function refreshSubscriptionStatus() {
       if (conektaButton) conektaButton.disabled = true;
     } else {
       const remaining = Number(data.freeDownloadsRemaining ?? 0);
-      if (info) info.textContent = "Te quedan " + remaining + " de 5 descargas gratis. Después puedes activar Pro.";
+      if (info) info.textContent = "Te quedan " + remaining + " de 10 descargas gratis. Después puedes activar Pro.";
       if (conektaButton) {
         conektaButton.disabled = !data.conektaEnabled;
         conektaButton.textContent = "Pagar 30 días con Conekta · $" + data.price + " MXN";

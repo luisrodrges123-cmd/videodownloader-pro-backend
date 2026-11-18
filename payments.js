@@ -6,6 +6,7 @@ import { logAdminEvent } from "./events.js";
 
 const router = Router();
 const PRICE = 29;
+const FREE_DOWNLOAD_LIMIT = 10;
 const CURRENCY = "MXN";
 const CONEKTA_AMOUNT = PRICE * 100;
 const PREMIUM_DAYS = 30;
@@ -301,7 +302,7 @@ router.get("/status", requiredAuth, async (req, res) => {
       mpPremiumActive ? expiresAt : conektaPremiumActive ? u.conekta_premium_until : expiresAt;
     return res.json({
       ok:true, freeDownloadsUsed:u.free_downloads_used,
-      freeDownloadsRemaining:active ? null : Math.max(0,5-u.free_downloads_used),
+      freeDownloadsRemaining:active ? null : Math.max(0,FREE_DOWNLOAD_LIMIT-u.free_downloads_used),
       subscriptionActive:active, subscriptionStatus:adminPremiumActive ? "admin" : conektaPremiumActive && !mpPremiumActive ? "conekta" : status,
       premiumSource, adminPremiumUntil:u.admin_premium_until,
       conektaPremiumUntil:u.conekta_premium_until,

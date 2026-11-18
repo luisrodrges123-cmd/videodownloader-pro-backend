@@ -1379,7 +1379,7 @@ function drawSubscriptions(){
   const filtered=subscriptions.filter(u=>[u.id,u.username,u.payer_email,u.mp_subscription_id,u.subscription_status].join(" ").toLowerCase().includes(q));
   $("subscriptionsTable").innerHTML=filtered.length?filtered.map(u=>{
     const [label,cls]=subscriptionLabel(u);
-    return `<tr><td>${safe(u.id)}</td><td>${safe(u.username||"—")}</td><td>${safe(u.payer_email||"—")}</td><td><span class="pill ${cls}">${label}</span></td><td>${safe(date(u.premium_source==="conekta"?u.conekta_premium_until:u.admin_premium_until||u.subscription_expires_at))}</td><td>${safe(u.mp_subscription_id||"—")}</td><td>${fmt(u.free_downloads_used||0)} / 5</td></tr>`;
+    return `<tr><td>${safe(u.id)}</td><td>${safe(u.username||"—")}</td><td>${safe(u.payer_email||"—")}</td><td><span class="pill ${cls}">${label}</span></td><td>${safe(date(u.premium_source==="conekta"?u.conekta_premium_until:u.admin_premium_until||u.subscription_expires_at))}</td><td>${safe(u.mp_subscription_id||"—")}</td><td>${fmt(u.free_downloads_used||0)} / 10</td></tr>`;
   }).join(""):'<tr><td colspan="7" class="empty">No hay usuarios que coincidan.</td></tr>';
 }
 

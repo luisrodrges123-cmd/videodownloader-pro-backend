@@ -8,6 +8,7 @@ import { pool } from "./db.js";
 import { logAdminEvent } from "./events.js";
 
 const router = Router();
+const FREE_DOWNLOAD_LIMIT = 10;
 const API_BASE = "https://knightvision.ai/api/v1/partner";
 
 function getApiKey() {
@@ -157,7 +158,7 @@ async function reserveDownload(userId) {
     const conektaPremium = user.conekta_premium_until && new Date(user.conekta_premium_until) > new Date();
     const paid = Boolean(adminPremium || conektaPremium) || (user.subscription_status === "authorized" &&
       (!user.subscription_expires_at || new Date(user.subscription_expires_at) > new Date()));
-    if (!paid && user.free_downloads_used >= 5) {
+    if (!paid && user.free_downloads_used >= FREE_DOWNLOAD_LIMIT) {
       await client.query("ROLLBACK");
       return { allowed:false, remaining:0 };
     }
@@ -165,7 +166,7 @@ async function reserveDownload(userId) {
       await client.query("UPDATE users SET free_downloads_used=free_downloads_used+1 WHERE id=$1", [userId]);
     }
     await client.query("COMMIT");
-    return { allowed:true, paid, remaining:paid ? null : Math.max(0,4-user.free_downloads_used) };
+    return { allowed:true, paid, remaining:paid ? null : Math.max(0,FREE_DOWNLOAD_LIMIT-1-user.free_downloads_used) };
   } catch (error) {
     await client.query("ROLLBACK").catch(()=>{});
     throw error;
@@ -252,7 +253,7 @@ router.post("/", async (req, res) => {
     if (!reservation.allowed) {
       return res.status(402).json({
         ok:false, code:"SUBSCRIPTION_REQUIRED",
-        error:"Ya utilizaste tus 5 descargas gratis. Activa VDownloader Pro por $29 MXN al mes.",
+        error:"Ya utilizaste tus 10 descargas gratis. Activa VDownloader Pro por $29 MXN por 30 días.",
         freeDownloadsRemaining:0
       });
     }
